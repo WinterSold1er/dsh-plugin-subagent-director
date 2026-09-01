@@ -73,7 +73,13 @@ export type SubagentDirectorKey =
   | 'closingContinuable'
   | 'closedSubagent'
   | 'confirmCloseContinuable'
-  | 'closeFailed';
+  | 'closeFailed'
+  | 'enforcementHeading'
+  | 'enforcementHint'
+  | 'enforcementStrict'
+  | 'enforcementLenient'
+  | 'enforcementStrictDesc'
+  | 'enforcementLenientDesc';
 
 /** English dictionary ($subagentDirector). */
 export const en: Record<SubagentDirectorKey, string> = {
@@ -143,7 +149,13 @@ export const en: Record<SubagentDirectorKey, string> = {
   "closingContinuable": "Releasing…",
   "closedSubagent": "Released",
   "confirmCloseContinuable": "Release continuable subagent “{id}”? It will stop being resident; you can no longer continue it with send_message.",
-  "closeFailed": "Release failed: {message}"
+  "closeFailed": "Release failed: {message}",
+  "enforcementHeading": "Orchestrate guard strictness",
+  "enforcementHint": "strict: both sticky and per-turn orchestration are enforced at the tool level (write/execute tools blocked); lenient: only the sticky projection is tool-enforced, per-turn stays prompt-only (stated honestly).",
+  "enforcementStrict": "Strict",
+  "enforcementLenient": "Lenient",
+  "enforcementStrictDesc": "Enforced for sticky and per-turn (tool-level block)",
+  "enforcementLenientDesc": "Sticky-only enforced (per-turn prompt-only)"
 };
 
 /** Chinese dictionary. */
@@ -214,5 +226,11 @@ export const zh: Record<SubagentDirectorKey, string> = {
   "closingContinuable": "正在终止…",
   "closedSubagent": "已终止",
   "confirmCloseContinuable": "终止可持续子代理“{id}”？终止后将不再驻留，无法再用 send_message 继续它。",
-  "closeFailed": "终止失败：{message}"
+  "closeFailed": "终止失败：{message}",
+  "enforcementHeading": "编排守卫严格度",
+  "enforcementHint": "strict：常驻与按轮编排都在工具层强制拦截写/执行类工具；lenient：仅在常驻模式工具层拦截，按轮编排仅提示（如实际所述）。",
+  "enforcementStrict": "严格 (strict)",
+  "enforcementLenient": "宽松 (lenient)",
+  "enforcementStrictDesc": "常驻与按轮编排都强制（工具层拦截）",
+  "enforcementLenientDesc": "仅常驻模式强制（按轮仅提示）"
 };

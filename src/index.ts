@@ -30,6 +30,7 @@ import { applyDefaultRouteSeam } from './default-route.js';
 import { applyGuidance } from './guidance.js';
 import { applyOrchestrate } from './orchestrate.js';
 import { createSettingsSnapshot, installDirectorSettings } from './settings.js';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
 
 export { Config } from './config.js';
 export type { DirectorConfig } from './config.js';
@@ -115,9 +116,18 @@ export function apply(ctx: Context, config: import('./config.js').DirectorConfig
   applyGuidance(ctx, getSettings, toolName);
 
   // ---- orchestrate command + projection + prompt section + tool guard ----
+  // Enforcement resolution (layered, strict-at-the-bottom):
+  //   1. user setting (index.ts:121) when the user toggled it in the settings UI;
+  //   2. else the plugin mount config (DirectorConfig.orchestrateEnforcement);
+  //   3. else 'strict' (the documented fail-closed baseline).
+  // Both the prompt frame and the tool guard read this single resolved value
+  // so they always agree (no false ENFORCED claim).
+  const mountEnforcement = config.orchestrateEnforcement ?? 'strict';
+  const resolveEnforcement = (): OrchestrateEnforcement =>
+    getSettings().orchestrateEnforcement ?? mountEnforcement;
   applyOrchestrate(ctx, getSettings, toolName, {
     readOnlyTools: config.orchestrateReadOnlyTools,
-    enforcement: config.orchestrateEnforcement ?? 'strict',
+    getEnforcement: resolveEnforcement,
   });
 
   // ---- close_subagent tool ----------------------------------------------

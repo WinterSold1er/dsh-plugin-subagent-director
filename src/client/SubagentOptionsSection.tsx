@@ -146,6 +146,12 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
                 }}
                 t={t}
             />
+            <EnforcementRow
+                controller={controller}
+                writable={writable}
+                current={section?.orchestrateEnforcement ?? 'strict'}
+                t={t}
+            />
             <RolesBlock
                 controller={controller}
                 groups={groups}
@@ -284,6 +290,61 @@ function DefaultModelRow({ controller, groups, writable, current, t }: {
             <div style={{ display: 'flex', gap: 8 }}>
                 <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
             </div>
+        </div>
+    );
+}
+
+/** The orchestrate-guard strictness toggle (strict ⇄ lenient). */
+function EnforcementRow({ controller, writable, current, t }: {
+    controller: SubagentOptionsStore;
+    writable: boolean;
+    current: 'strict' | 'lenient';
+    t: (key: SubagentDirectorKey) => string;
+}): JSX.Element {
+    const [busy, setBusy] = useState(false);
+    const [failure, setFailure] = useState<string | undefined>(undefined);
+    const [done, setDone] = useState(false);
+
+    const choose = async (next: 'strict' | 'lenient'): Promise<void> => {
+        if (next === current) return;
+        setBusy(true);
+        setFailure(undefined);
+        try {
+            const message = await controller.setEnforcement(next);
+            if (message !== undefined) {
+                setFailure(message);
+                return;
+            }
+            setDone(true);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div style={cardStyle}>
+            <div style={rowStyle}>
+                <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('enforcementHeading')}</strong>
+                <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{t('enforcementHint')}</p>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                    style={current === 'strict' ? primaryButtonStyle : ghostButtonStyle}
+                    disabled={!writable || busy}
+                    onClick={() => void choose('strict')}
+                >
+                    {t('enforcementStrict')}
+                </button>
+                <button
+                    style={current === 'lenient' ? primaryButtonStyle : ghostButtonStyle}
+                    disabled={!writable || busy}
+                    onClick={() => void choose('lenient')}
+                >
+                    {t('enforcementLenient')}
+                </button>
+            </div>
+            {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
+            {done ? <div style={{ color: token.accent, fontSize: 12 }}>{t('restoreDone')}</div> : null}
         </div>
     );
 }

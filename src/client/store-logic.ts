@@ -13,6 +13,8 @@
  *   }
  */
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import type { OrchestrateEnforcement } from '../orchestrate-guard.js';
+export type { OrchestrateEnforcement } from '../orchestrate-guard.js';
 
 /** One role as the user edits it in a card (empty string = "clear the field"). */
 export interface RoleDraft {
@@ -45,6 +47,8 @@ export interface StoredSection {
   defaultRole?: string;
   fallbackOnInvalid?: boolean;
   roles?: Record<string, StoredRole>;
+  /** Orchestrate-mode tool-level enforcement (user setting). Absent ⇒ mount default. */
+  orchestrateEnforcement?: OrchestrateEnforcement;
 }
 
 /** Path of the roles map from the section root. */
@@ -200,6 +204,12 @@ export function restoreDefaultsOps(current: StoredSection): SettingsPathOpView[]
   if (current.defaultReasoningEffort !== undefined) ops.push({ op: 'unset', path: ['defaultReasoningEffort'] } as SettingsPathOpView);
   if (current.defaultRole !== undefined) ops.push({ op: 'unset', path: ['defaultRole'] } as SettingsPathOpView);
   return ops;
+}
+
+/** Ops to set the orchestrate enforcement level ('strict' | 'lenient'). */
+export function enforcementOps(before: StoredSection, next: OrchestrateEnforcement): SettingsPathOpView[] {
+  if (before.orchestrateEnforcement === next) return [];
+  return [{ op: 'set', path: ['orchestrateEnforcement'], value: next } as SettingsPathOpView];
 }
 
 /** Whether a section's defaultRole references a role that currently exists. */

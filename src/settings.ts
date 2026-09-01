@@ -31,8 +31,6 @@ export const SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE = settingsNamespace('subagent-
 export type { RoleTemplate, SubagentDirectorSettings } from './route-resolver.js';
 
 /**
- * Live settings snapshot holder.
- *
  * dsh-settings' `installSettingsSection` calls `setSource` exactly once with a
  * source thunk and fires `onChange` on every settings change (settings.yaml
  * hot reload, settings UI writes). The previous wiring captured the value
@@ -108,6 +106,13 @@ export const SettingsSchema: Schemastery = z.object({
   defaultRole: z.string(),
   fallbackOnInvalid: z.boolean().default(true),
   roles: z.dict(RoleTemplateSchema),
+  // User-setting override of DirectorConfig.orchestrateEnforcement. Deliberately
+  // NO .default(): an absent user setting falls through to the mount config
+  // default (also 'strict'), so the snapshot carries undefined and the plugin
+  // entry resolves strict-at-the-bottom (see index.ts). A default here would
+  // mask whether the user ever set it and is unnecessary for the strict
+  // baseline. schemastery coerces the string to the allowed union at write time.
+  orchestrateEnforcement: z.union(['strict', 'lenient']),
 });
 
 function isEmpty(value: string | undefined | null): boolean {

@@ -154,6 +154,13 @@ export interface OrchestrateGuardDeps {
   readOnlyTools: readonly string[];
   /** Enforcement level; 'strict' (default) blocks sticky + per-turn, 'lenient' blocks sticky only. */
   enforcement?: OrchestrateEnforcement;
+  /**
+   * Live enforcement resolver. When supplied it OVERRIDES `enforcement` on every
+   * tool call so a settings-page toggle (user setting) takes effect immediately
+   * without a restart. The plugin passes a getter that reads
+   * `getSettings().orchestrateEnforcement ?? mountConfig ?? 'strict'`.
+   */
+  getEnforcement?: () => OrchestrateEnforcement;
   /** Warn sink (rate-limited by the guard itself). */
   warn: (message: string, err?: unknown) => void;
 }
@@ -166,7 +173,6 @@ export interface OrchestrateGuardDeps {
 export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuard {
   const allowed = new Set<string>([...orchestrateAlwaysAllowedTools(deps.toolName), ...deps.readOnlyTools]);
   const readOnlyList = deps.readOnlyTools.join(', ');
-  const enforcement: OrchestrateEnforcement = deps.enforcement ?? 'strict';
   let warnedNoAgent = false;
   let warnedNoProjections = false;
 
@@ -183,6 +189,10 @@ export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuar
   return (exec: Readonly<ToolExecution>): string | undefined => {
     // Fast path: the allow-listed tools are never blocked, in any mode.
     if (allowed.has(exec.name)) return undefined;
+    // Resolution is per-call so a settings toggle is live (no restart). A
+    // provided getEnforcement wins over the static `enforcement` value.
+    const enforcement: OrchestrateEnforcement =
+      deps.getEnforcement !== undefined ? deps.getEnforcement() : deps.enforcement ?? 'strict';
 
     const agent = exec.agent;
     if (agent === undefined) {

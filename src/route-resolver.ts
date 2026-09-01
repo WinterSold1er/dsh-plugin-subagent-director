@@ -31,6 +31,7 @@
  * SubagentStartRequest.agentOptions.
  */
 import type { AgentOptions } from '@deepseek-ai/dsh-agent';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
 
 /** Which layer supplied the resolved agentOptions fields. */
 export type RouteLayer = 'call' | 'role' | 'default' | 'inherit';
@@ -67,6 +68,15 @@ export interface SubagentDirectorSettings {
   fallbackOnInvalid?: boolean;
   /** Named role templates. */
   roles?: Record<string, RoleTemplate>;
+  /**
+   * Orchestrate-mode tool-level enforcement (design: strict default).
+   * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
+   * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
+   * stays prompt-only. This is a USER-SETTING override of the plugin's mount
+   * config (DirectorConfig.orchestrateEnforcement); when absent the mount
+   * config default applies, and that ultimately defaults to 'strict'.
+   */
+  orchestrateEnforcement?: OrchestrateEnforcement;
 }
 
 /** Explicit per-call arguments accepted by the subagent_role tool. */

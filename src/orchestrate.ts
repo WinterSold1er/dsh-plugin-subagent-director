@@ -367,12 +367,15 @@ export function resolveOrchestrateMode(
  * any tool not in the allow-list is blocked for the main agent while mode is on),
  * `enforcement` picks the guard/prompt strictness ('strict' default: sticky +
  * per-turn tool-enforced; 'lenient': sticky tool-enforced, per-turn prompt-only).
+ * `getEnforcement` is an optional live resolver: when present it overrides
+ * `enforcement` on every guard/prompt evaluation so a settings-page toggle
+ * applies without a restart.
  */
 export function applyOrchestrate(
   ctx: Context,
   getSettings: () => SubagentDirectorSettings,
   toolName: string,
-  options?: { readOnlyTools?: readonly string[]; enforcement?: OrchestrateEnforcement },
+  options?: { readOnlyTools?: readonly string[]; enforcement?: OrchestrateEnforcement; getEnforcement?: () => OrchestrateEnforcement },
 ): void {
   // Register our event type on the shared KNOWN set so session logs carrying
   // `orchestrate/change` load in any boot that mounts this plugin.
@@ -556,7 +559,12 @@ export function applyOrchestrate(
   // allowed; subagent children exempt via durable session-header metadata;
   // fail-open when the mode is unresolvable).
   const readOnlyTools = options?.readOnlyTools ?? ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS;
-  const enforcement: OrchestrateEnforcement = options?.enforcement ?? 'strict';
+  // Resolved enforcement (layered: getEnforcement live getter wins, else the
+  // static option, else 'strict'). Both the guard and the prompt read this so
+  // a settings-page toggle is live (no restart) and prompt <> guard agree.
+  const getEnforcement: () => OrchestrateEnforcement =
+    options?.getEnforcement ?? (() => options?.enforcement ?? 'strict');
+  const enforcement: OrchestrateEnforcement = getEnforcement();
   // Capability check before registering: `guard()` is part of the 0.1.1-line
   // dsh-tools ToolRuntime contract, but hosts on older dsh lines (and minimal
   // tools stubs) expose a register-only service. Degrade to prompt-only with
@@ -572,7 +580,7 @@ export function applyOrchestrate(
               getProjections: () => projections,
               toolName,
               readOnlyTools,
-              enforcement,
+              getEnforcement,
               warn: (message, err) => ctx.logger.warn('[orchestrate] ' + message, err),
             }),
           ),
@@ -631,7 +639,7 @@ export function applyOrchestrate(
         // command by turn/start, not by those injection events.)
         for (const candidate of sessionCandidates) {
           const perTurn = detectPerTurnOrchestrate(candidate);
-          if (perTurn === 'on') return renderOrchestratorSection(getSettings(), toolName, enforcement);
+          if (perTurn === 'on') return renderOrchestratorSection(getSettings(), toolName, getEnforcement());
           if (perTurn === 'off') return '';
         }
 
@@ -656,7 +664,7 @@ export function applyOrchestrate(
         }
         // Legitimate off: no section, no warning (intended behavior).
         if (resolvedMode === 'off') return '';
-        return renderOrchestratorSection(getSettings(), toolName, enforcement);
+        return renderOrchestratorSection(getSettings(), toolName, getEnforcement());
       },
     });
   }

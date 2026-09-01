@@ -35,6 +35,7 @@ import {
   defaultModelOps,
   removeRoleOps,
   restoreDefaultsOps,
+  enforcementOps,
   setDefaultRoleOps,
   updateRoleOps,
   type DefaultModelEdits,
@@ -42,6 +43,7 @@ import {
   type RoleDraft,
   type StoredRole,
   type StoredSection,
+  type OrchestrateEnforcement,
 } from './store-logic.js';
 
 /** The settings namespace this page reads and writes. */
@@ -316,6 +318,12 @@ export class SubagentOptionsStore {
   async restoreDefaults(): Promise<string | undefined> {
     const state = this.store.getSnapshot();
     const result = await this.mutate(restoreDefaultsOps(state.section ?? {}));
+    return result.ok ? undefined : result.message;
+  }
+
+  async setEnforcement(next: OrchestrateEnforcement): Promise<string | undefined> {
+    const state = this.store.getSnapshot();
+    const result = await this.mutate(enforcementOps(state.section ?? {}, next));
     return result.ok ? undefined : result.message;
   }
 }
