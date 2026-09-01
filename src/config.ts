@@ -16,6 +16,7 @@
 import z from '@deepseek-ai/schemastery';
 
 import { ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS } from './orchestrate-guard.js';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
 
 /**
  * Cordis-layer plugin configuration.
@@ -84,6 +85,20 @@ export interface DirectorConfig {
    * or executes.
    */
   orchestrateReadOnlyTools?: readonly string[];
+
+  /**
+   * Tool-level enforcement strictness for orchestrate mode (default 'strict').
+   * 'strict': while orchestrate is in effect — sticky (/orchestrate on until
+   * off) OR per-turn (使用orchestrate模式 / /orchestrate <task> this turn) —
+   * the main agent is held to the fail-closed allow-list above and every
+   * write/execute tool call is blocked (the injected prompt says ENFORCED at
+   * the tool level, which is then true). 'lenient': tool-level enforcement
+   * covers ONLY the sticky projection; per-turn orchestration stays
+   * prompt-only and the injected prompt says so honestly (no false ENFORCED
+   * claim). Choose lenient when per-turn orchestration must not risk blocking
+   * legitimate work; sticky mode is then the only hard boundary.
+   */
+  orchestrateEnforcement?: OrchestrateEnforcement;
 }
 
 /** Schemastery schema for {@link DirectorConfig}. */
@@ -96,4 +111,5 @@ export const Config = z.object({
     .union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed')]),
   applyDefaultRoute: z.boolean().default(true),
   orchestrateReadOnlyTools: z.array(z.string()).default([...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS]),
+  orchestrateEnforcement: z.union(['strict', 'lenient']).default('strict'),
 });

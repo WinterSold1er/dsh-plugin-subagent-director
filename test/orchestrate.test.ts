@@ -87,6 +87,33 @@ describe('buildOrchestratorFrame', () => {
     expect(text).toContain('send_message');
     expect(text).toContain('interrupt_agent');
   });
+
+  it('strict frame claims tool-level enforcement (the guard really blocks)', () => {
+    const text = buildOrchestratorFrame('dispatch', 'strict');
+    expect(text).toMatch(/ENFORCED at the tool level/);
+    expect(text).not.toMatch(/NOT tool-enforced/);
+  });
+
+  it('lenient frame does NOT falsely claim full enforcement — states sticky-only scope honestly', () => {
+    const text = buildOrchestratorFrame('dispatch', 'lenient');
+    // The false "ENFORCED" claim must not appear in lenient mode.
+    expect(text).not.toMatch(/ENFORCED at the tool level:/);
+    // Honest wording: sticky-only enforcement, per-turn not enforced.
+    expect(text).toMatch(/ENFORCED at the tool level only while orchestrator mode is sticky/);
+    expect(text).toMatch(/NOT tool-enforced/);
+    expect(text).toContain('/orchestrate on');
+  });
+
+  it('buildOrchestratorFrame defaults to strict', () => {
+    expect(buildOrchestratorFrame('dispatch')).toMatch(/ENFORCED at the tool level:/);
+  });
+
+  it('renderOrchestratorPrompt threads the enforcement level into the frame', () => {
+    const lenient = renderOrchestratorPrompt(settings, 'subagent_role', 'lenient');
+    expect(lenient).toMatch(/NOT tool-enforced/);
+    const strict = renderOrchestratorPrompt(settings, 'subagent_role', 'strict');
+    expect(strict).toMatch(/ENFORCED at the tool level:/);
+  });
 });
 
 describe('ORCHESTRATE_VALID_MODES', () => {

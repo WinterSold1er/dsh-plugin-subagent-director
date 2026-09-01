@@ -121,4 +121,9 @@ describe('Config', () => {
   it('applyDefaultRoute 默认开启', () => {
     expect(Config({}).applyDefaultRoute).toBe(true);
   });
+
+  it('orchestrateEnforcement 默认 strict（保持既有 fail-closed 行为）', () => {
+    expect(Config({}).orchestrateEnforcement).toBe('strict');
+    expect(Config({ orchestrateEnforcement: 'lenient' }).orchestrateEnforcement).toBe('lenient');
+  });
 });

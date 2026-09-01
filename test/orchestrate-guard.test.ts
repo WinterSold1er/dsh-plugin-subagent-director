@@ -23,7 +23,7 @@ import { resolveOrchestrateMode } from '../src/orchestrate.js';
 /** Build the minimal ToolExecution shape the guard reads (name + agent). */
 function makeExec(
   name: string,
-  opts: { agent?: { session?: { header?: Record<string, unknown> } } } = {},
+  opts: { agent?: { session?: { header?: Record<string, unknown>; events?: unknown[] } } } = {},
 ): ToolExecution {
   return { name, agent: opts.agent } as unknown as ToolExecution;
 }
@@ -39,19 +39,49 @@ function fakeProjections(mode: 'on' | 'off' | 'error' | 'empty') {
   };
 }
 
+/**
+ * Build a session whose CURRENT turn is per-turn orchestrated the same way the
+ * prompt/guard event stream does: a `turn/start` followed by a user/message
+ * saying 使用orchestrate模式, or a `command/run` (/orchestrate <task>) inside
+ * this turn's boundary (older message before it).
+ */
+function makePerTurnSession(kind: 'nl' | 'cmd'): { header: Record<string, unknown>; events: unknown[] } {
+  if (kind === 'cmd') {
+    return {
+      header: { id: 's1' },
+      events: [
+        { type: 'user/message', seq: 0, data: { content: [{ type: 'text', text: '旧消息' }] } },
+        { type: 'command/run', seq: 1, data: { name: 'orchestrate', args: ' 分析上周A股走势' } },
+        { type: 'turn/start', seq: 2 },
+        { type: 'user/message', seq: 3, data: { content: [{ type: 'text', text: '分析上周A股走势' }] } },
+      ],
+    };
+  }
+  return {
+    header: { id: 's1' },
+    events: [
+      { type: 'turn/start', seq: 0 },
+      { type: 'user/message', seq: 1, data: { content: [{ type: 'text', text: '使用orchestrate模式帮我分析' }] } },
+    ],
+  };
+}
+
 function makeGuard(
   mode: 'on' | 'off' | 'error' | 'empty' | 'missing',
-  overrides: Partial<Pick<OrchestrateGuardDeps, 'toolName' | 'readOnlyTools'>> = {},
+  overrides: Partial<Pick<OrchestrateGuardDeps, 'toolName' | 'readOnlyTools' | 'enforcement'>> = {},
 ): (exec: ToolExecution) => string | undefined {
   const warnings: string[] = [];
   const deps: OrchestrateGuardDeps = {
     getProjections: () => (mode === 'missing' ? undefined : fakeProjections(mode)),
     toolName: overrides.toolName ?? 'subagent_role',
     readOnlyTools: overrides.readOnlyTools ?? ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
+    enforcement: overrides.enforcement ?? 'strict',
     warn: (message: string) => warnings.push(message),
   };
   return createOrchestrateToolGuard(deps);
 }
+
+
 
 describe('orchestrateAlwaysAllowedTools', () => {
   it('always includes the configured delegation tool, built-in subagent tools, close, control, and interaction tools', () => {
@@ -154,6 +184,73 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
     expect(guard(makeExec('read', { agent: mainAgent }))).toBeUndefined();
     // grep dropped from the allow-list → now blocked for the orchestrator.
     expect(guard(makeExec('grep', { agent: mainAgent }))).toContain('BLOCKED');
+  });
+});
+
+describe('createOrchestrateToolGuard — enforcement matrix (sticky × per-turn × strict/lenient)', () => {
+  const mainAgent = { session: { header: { id: 'main-session' } } };
+
+  it('strict: blocks write/execute tools on a per-turn natural-language turn (no sticky on)', () => {
+    const guard = makeGuard('off', { enforcement: 'strict' });
+    const perTurn = { agent: { session: makePerTurnSession('nl') } };
+    expect(guard(makeExec('bash', perTurn))).toContain('BLOCKED');
+    expect(guard(makeExec('edit', perTurn))).toContain('BLOCKED');
+    // Read-only tools stay allowed on the same turn.
+    expect(guard(makeExec('read', perTurn))).toBeUndefined();
+  });
+
+  it('strict: blocks write/execute tools on a /orchestrate <task> turn (command/run inside turn boundary)', () => {
+    const guard = makeGuard('off', { enforcement: 'strict' });
+    const perTurn = { agent: { session: makePerTurnSession('cmd') } };
+    expect(guard(makeExec('bash', perTurn))).toContain('BLOCKED');
+    expect(guard(makeExec('write', perTurn))).toContain('BLOCKED');
+    // Dispatch tools stay allowed.
+    expect(guard(makeExec('subagent_role', perTurn))).toBeUndefined();
+  });
+
+  it('strict: does NOT leak the per-turn block into a later turn (turn boundary respected)', () => {
+    const guard = makeGuard('off', { enforcement: 'strict' });
+    const session = {
+      header: { id: 's1' },
+      events: [
+        { type: 'turn/start', seq: 0 },
+        { type: 'user/message', seq: 1, data: { content: [{ type: 'text', text: '使用orchestrate模式帮我分析' }] } },
+        { type: 'turn/start', seq: 2 },
+        { type: 'user/message', seq: 3, data: { content: [{ type: 'text', text: '后续普通消息' }] } },
+      ],
+    };
+    expect(guard(makeExec('bash', { agent: { session } }))).toBeUndefined();
+  });
+
+  it('strict: still blocks on the sticky projection when the current turn declares nothing', () => {
+    const guard = makeGuard('on', { enforcement: 'strict' });
+    expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
+  });
+
+  it('lenient: does NOT block a per-turn turn (prompt-only), even when a per-turn request is present', () => {
+    const guard = makeGuard('off', { enforcement: 'lenient' });
+    for (const kind of ['nl', 'cmd'] as const) {
+      const perTurn = { agent: { session: makePerTurnSession(kind) } };
+      expect(guard(makeExec('bash', perTurn)), kind).toBeUndefined();
+    }
+  });
+
+  it('lenient: still blocks on the sticky projection (the hard boundary)', () => {
+    const guard = makeGuard('on', { enforcement: 'lenient' });
+    expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
+    expect(guard(makeExec('read', { agent: mainAgent }))).toBeUndefined();
+  });
+
+  it('defaults to strict when enforcement is omitted (existing behaviour preserved)', () => {
+    const guard = makeGuard('off');
+    const perTurn = { agent: { session: makePerTurnSession('nl') } };
+    expect(guard(makeExec('bash', perTurn))).toContain('BLOCKED');
+  });
+
+  it('never blocks subagent children on a per-turn turn even under strict (workers keep full access)', () => {
+    const guard = makeGuard('off', { enforcement: 'strict' });
+    const child = { agent: { session: { header: { origin: 'subagent', delegationDepth: 1 }, events: makePerTurnSession('nl').events } } };
+    expect(guard(makeExec('bash', child))).toBeUndefined();
   });
 });
 

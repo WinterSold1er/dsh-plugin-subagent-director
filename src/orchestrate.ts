@@ -35,7 +35,11 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { KNOWN_SESSION_EVENT_TYPES, type SessionEvent } from '@deepseek-ai/dsh-session';
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection';
 
-import { createOrchestrateToolGuard, ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS } from './orchestrate-guard.js';
+import {
+  createOrchestrateToolGuard,
+  ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
+  type OrchestrateEnforcement,
+} from './orchestrate-guard.js';
 import type { SubagentDirectorSettings } from './settings.js';
 
 /** Stable system-prompt section name. */
@@ -122,13 +126,42 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 }
 
 /**
+ * Detect whether the CURRENT turn of a session is per-turn orchestrated
+ * (natural-language 使用orchestrate模式 in the turn's first user message, or a
+ * `/orchestrate <task>` command/run inside this turn's boundary). Shared by
+ * the system-prompt section and the strict tool guard so prompt injection and
+ * enforcement always agree on the same event stream. Returns 'on' | 'off' |
+ * undefined — 'off' means this turn explicitly opted OUT of per-turn
+ * orchestration (sticky mode is resolved separately).
+ * @param session - a live Session (or a faithful fake with `.events`).
+ */
+export function detectPerTurnOrchestrate(session: unknown): OrchestrateRequest {
+  const msgText = currentTurnUserMessageText(session);
+  if (msgText !== undefined) {
+    const req = detectOrchestrateRequest(msgText);
+    if (req !== undefined) return req;
+  }
+  const cmdReq = recentOrchestrateCommandRun(session);
+  if (cmdReq !== undefined) return cmdReq;
+  return undefined;
+}
+
+/**
  * Build the data-independent framing of the orchestrator prompt for a given
  * delegation tool name. The role list is appended separately by
  * {@link renderOrchestratorRoles}.
  * @param toolName - the configured model-facing delegation tool name.
+ * @param enforcement - 'strict' (default) or 'lenient'; the frame states the
+ * REAL enforcement scope so the prompt never claims tool-level blocking that
+ * the configured guard does not perform (per-turn orchestration is
+ * prompt-only under 'lenient').
  */
-export function buildOrchestratorFrame(toolName: string): string {
-  return `You are a PURE ORCHESTRATOR. Your only productive action is to call the \`${toolName}\` tool (provided by the subagent-director plugin) to delegate work. You must NEVER write, edit, execute, or run anything yourself — this contract is ENFORCED at the tool level: any write/execution tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing. You MAY use read-only tools (read / ls / grep / find) to gather the context you need to write precise dispatch briefs; anything that must be run, probed, or changed in the environment has to be done by a dispatched subagent. You manage the subagents you have already dispatched: \`list_agents\` lists your background subagents and their status, \`send_message\` starts a follow-up turn on one (use it to steer), and \`interrupt_agent\` stops its current turn.
+export function buildOrchestratorFrame(toolName: string, enforcement: OrchestrateEnforcement = 'strict'): string {
+  const enforcementSentence =
+    enforcement === 'lenient'
+      ? 'This contract is ENFORCED at the tool level only while orchestrator mode is sticky (/orchestrate on): in that state any write/execution tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing. This turn was orchestrated per-turn (/orchestrate <task> or 使用orchestrate模式), which is NOT tool-enforced — honor this contract on your own discipline for this turn.'
+      : 'This contract is ENFORCED at the tool level: any write/execution tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing.';
+  return `You are a PURE ORCHESTRATOR. Your only productive action is to call the \`${toolName}\` tool (provided by the subagent-director plugin) to delegate work. You must NEVER write, edit, execute, or run anything yourself — ${enforcementSentence} You MAY use read-only tools (read / ls / grep / find) to gather the context you need to write precise dispatch briefs; anything that must be run, probed, or changed in the environment has to be done by a dispatched subagent. You manage the subagents you have already dispatched: \`list_agents\` lists your background subagents and their status, \`send_message\` starts a follow-up turn on one (use it to steer), and \`interrupt_agent\` stops its current turn.
 
 The subagent-director plugin supplies its role templates from settings (subagent-director.roles) and the guidance section 'subagent-director:roles'. Delegate exactly one task per call:
 
@@ -164,8 +197,8 @@ export function renderOrchestratorRoles(settings: SubagentDirectorSettings, tool
  * @param settings - current resolved settings snapshot.
  * @param toolName - the configured model-facing delegation tool name.
  */
-export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, toolName: string): string {
-  return `${buildOrchestratorFrame(toolName)}\n\n${renderOrchestratorRoles(settings, toolName)}\n\nOrchestration rules:
+export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, toolName: string, enforcement: OrchestrateEnforcement = 'strict'): string {
+  return `${buildOrchestratorFrame(toolName, enforcement)}\n\n${renderOrchestratorRoles(settings, toolName)}\n\nOrchestration rules:
 1. Only dispatch. Forbid doing the work yourself.
 2. Independent tasks -> dispatch them in parallel (multiple ${toolName} calls in one turn).
 3. Dependent / relay tasks -> wait for the prior subagent to finish, then dispatch the next stage.
@@ -185,11 +218,11 @@ export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, too
  * @param settings - current resolved settings snapshot.
  * @param toolName - the configured model-facing delegation tool name.
  */
-function renderOrchestratorSection(settings: SubagentDirectorSettings, toolName: string): string {
+function renderOrchestratorSection(settings: SubagentDirectorSettings, toolName: string, enforcement: OrchestrateEnforcement): string {
   const roles = settings.roles ?? {};
   const hasRoles = Object.values(roles).some((role) => role !== undefined);
   if (!hasRoles) return renderOrchestratorUnavailableNotice(toolName);
-  return renderOrchestratorPrompt(settings, toolName);
+  return renderOrchestratorPrompt(settings, toolName, enforcement);
 }
 
 /**
@@ -331,13 +364,15 @@ export function resolveOrchestrateMode(
  * @param toolName - the configured model-facing delegation tool name.
  * @param options - optional policy overrides; `readOnlyTools` replaces the
  * default read-only allow-list for the orchestrate guard (fail-closed design:
- * any tool not in the allow-list is blocked for the main agent while mode is on).
+ * any tool not in the allow-list is blocked for the main agent while mode is on),
+ * `enforcement` picks the guard/prompt strictness ('strict' default: sticky +
+ * per-turn tool-enforced; 'lenient': sticky tool-enforced, per-turn prompt-only).
  */
 export function applyOrchestrate(
   ctx: Context,
   getSettings: () => SubagentDirectorSettings,
   toolName: string,
-  options?: { readOnlyTools?: readonly string[] },
+  options?: { readOnlyTools?: readonly string[]; enforcement?: OrchestrateEnforcement },
 ): void {
   // Register our event type on the shared KNOWN set so session logs carrying
   // `orchestrate/change` load in any boot that mounts this plugin.
@@ -521,6 +556,7 @@ export function applyOrchestrate(
   // allowed; subagent children exempt via durable session-header metadata;
   // fail-open when the mode is unresolvable).
   const readOnlyTools = options?.readOnlyTools ?? ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS;
+  const enforcement: OrchestrateEnforcement = options?.enforcement ?? 'strict';
   // Capability check before registering: `guard()` is part of the 0.1.1-line
   // dsh-tools ToolRuntime contract, but hosts on older dsh lines (and minimal
   // tools stubs) expose a register-only service. Degrade to prompt-only with
@@ -536,6 +572,7 @@ export function applyOrchestrate(
               getProjections: () => projections,
               toolName,
               readOnlyTools,
+              enforcement,
               warn: (message, err) => ctx.logger.warn('[orchestrate] ' + message, err),
             }),
           ),
@@ -593,15 +630,9 @@ export function applyOrchestrate(
         // message of the turn, and recentOrchestrateCommandRun bounds the
         // command by turn/start, not by those injection events.)
         for (const candidate of sessionCandidates) {
-          const msgText = currentTurnUserMessageText(candidate);
-          if (msgText !== undefined) {
-            const req = detectOrchestrateRequest(msgText);
-            if (req === 'on') return renderOrchestratorSection(getSettings(), toolName);
-            if (req === 'off') return '';
-          }
-          const cmdReq = recentOrchestrateCommandRun(candidate);
-          if (cmdReq === 'on') return renderOrchestratorSection(getSettings(), toolName);
-          if (cmdReq === 'off') return '';
+          const perTurn = detectPerTurnOrchestrate(candidate);
+          if (perTurn === 'on') return renderOrchestratorSection(getSettings(), toolName, enforcement);
+          if (perTurn === 'off') return '';
         }
 
         // Shared resolver with the tool guard (single source of truth for
@@ -625,7 +656,7 @@ export function applyOrchestrate(
         }
         // Legitimate off: no section, no warning (intended behavior).
         if (resolvedMode === 'off') return '';
-        return renderOrchestratorSection(getSettings(), toolName);
+        return renderOrchestratorSection(getSettings(), toolName, enforcement);
       },
     });
   }

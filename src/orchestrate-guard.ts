@@ -23,6 +23,20 @@
  * (older dsh lines, minimal stubs) degrades to prompt-only with a warning
  * instead of throwing during entry activation.
  *
+ * ENFORCEMENT LEVELS (config `orchestrateEnforcement`, default 'strict'):
+ *   - strict: while orchestrate mode is in effect for a session — EITHER the
+ *     sticky projection (`/orchestrate on`) OR per-turn detection (the current
+ *     turn's user message said 使用orchestrate模式, or a `/orchestrate <task>`
+ *     command/run sits in this turn's boundary) — the main agent is held to
+ *     the allow-list below (fail-closed). This closes the prompt/guard gap:
+ *     per-turn orchestration used to inject an "ENFORCED at the tool level"
+ *     prompt while the guard only read the sticky projection and let the
+ *     per-turn orchestrator call bash/edit freely.
+ *   - lenient: the guard only enforces the STICKY projection (`/orchestrate on`
+ *     until off). Per-turn orchestration stays prompt-only — the injected
+ *     prompt says so honestly (see buildOrchestratorFrame) instead of claiming
+ *     tool-level enforcement it does not provide.
+ *
  * POLICY (deliberate, documented per team decision):
  *   - ALLOWLIST, fail-closed. While orchestrate mode is ON for a session, the
  *     MAIN agent may only call: dispatch tools (this plugin's delegation tool,
@@ -65,7 +79,15 @@
 import type { ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools';
 
 import { CLOSE_SUBAGENT_TOOL_NAME } from './close-tool.js';
-import { resolveOrchestrateMode } from './orchestrate.js';
+import { detectPerTurnOrchestrate, resolveOrchestrateMode } from './orchestrate.js';
+
+/**
+ * Orchestrate guard enforcement level, mirroring DirectorConfig.
+ * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
+ * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
+ * stays prompt-level (prompt wording reflects this honestly).
+ */
+export type OrchestrateEnforcement = 'strict' | 'lenient';
 
 /**
  * Default read-only tool surface of the DSH host (fs/shell/interaction
@@ -130,6 +152,8 @@ export interface OrchestrateGuardDeps {
   toolName: string;
   /** Read-only tool names allowed for the orchestrator (config-injected, see DirectorConfig). */
   readOnlyTools: readonly string[];
+  /** Enforcement level; 'strict' (default) blocks sticky + per-turn, 'lenient' blocks sticky only. */
+  enforcement?: OrchestrateEnforcement;
   /** Warn sink (rate-limited by the guard itself). */
   warn: (message: string, err?: unknown) => void;
 }
@@ -142,8 +166,19 @@ export interface OrchestrateGuardDeps {
 export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuard {
   const allowed = new Set<string>([...orchestrateAlwaysAllowedTools(deps.toolName), ...deps.readOnlyTools]);
   const readOnlyList = deps.readOnlyTools.join(', ');
+  const enforcement: OrchestrateEnforcement = deps.enforcement ?? 'strict';
   let warnedNoAgent = false;
   let warnedNoProjections = false;
+
+  const blocked = (exec: Readonly<ToolExecution>): string =>
+    'BLOCKED: orchestrate mode is ON for this session — you are the pure orchestrator and may not call `' +
+    exec.name +
+    '` yourself. This is enforced at the tool level, not a transient error: retrying will keep failing. ' +
+    'Use read-only tools (' +
+    readOnlyList +
+    ') only to gather context for dispatch decisions, and dispatch the actual work via `' +
+    deps.toolName +
+    '` (or the built-in subagent tools) instead. To inspect or steer subagents you already started, use `list_agents`, `send_message`, or `interrupt_agent`.';
 
   return (exec: Readonly<ToolExecution>): string | undefined => {
     // Fast path: the allow-listed tools are never blocked, in any mode.
@@ -183,20 +218,18 @@ export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuar
       return undefined;
     }
 
+    // strict: per-turn orchestration counts as orchestrate-in-effect, so the
+    // per-turn detection must run before the sticky projection read (the
+    // projection itself is only ever flipped by sticky /orchestrate on|off).
+    // lenient: enforcement covers the sticky projection only — per-turn
+    // stays prompt-level, so the per-turn check is skipped entirely.
+    if (enforcement === 'strict' && detectPerTurnOrchestrate(agent.session) === 'on') return blocked(exec);
+
     const mode = resolveOrchestrateMode(projections, [agent.session], (message, err) =>
       deps.warn('orchestrate guard: ' + message, err),
     );
     if (mode !== 'on') return undefined;
 
-    return (
-      'BLOCKED: orchestrate mode is ON for this session — you are the pure orchestrator and may not call `' +
-      exec.name +
-      '` yourself. This is enforced at the tool level, not a transient error: retrying will keep failing. ' +
-      'Use read-only tools (' +
-      readOnlyList +
-      ') only to gather context for dispatch decisions, and dispatch the actual work via `' +
-      deps.toolName +
-      '` (or the built-in subagent tools) instead. To inspect or steer subagents you already started, use `list_agents`, `send_message`, or `interrupt_agent`.'
-    );
+    return blocked(exec);
   };
-}
+} 

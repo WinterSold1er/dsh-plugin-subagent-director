@@ -115,7 +115,10 @@ export function apply(ctx: Context, config: import('./config.js').DirectorConfig
   applyGuidance(ctx, getSettings, toolName);
 
   // ---- orchestrate command + projection + prompt section + tool guard ----
-  applyOrchestrate(ctx, getSettings, toolName, { readOnlyTools: config.orchestrateReadOnlyTools });
+  applyOrchestrate(ctx, getSettings, toolName, {
+    readOnlyTools: config.orchestrateReadOnlyTools,
+    enforcement: config.orchestrateEnforcement ?? 'strict',
+  });
 
   // ---- close_subagent tool ----------------------------------------------
   // Provider-independent (drain is a global subagents operation), so it
