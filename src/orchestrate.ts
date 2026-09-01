@@ -10,10 +10,11 @@
  *
  * Naming caveat (observed on a live 0.1.1-rc.x web host): the assembled tool catalog
  * contains BOTH this plugin's `subagent_role` and the base bundle's built-in
- * `subagent` / `subagent_fork`. They are distinct tools, not two names for one
- * wire entry. The prompt below names `toolName` explicitly precisely because a
- * model that reaches for the built-in `subagent` bypasses role persona and role
- * toolFilter.
+ * `subagent` / `subagent_fork`, plus the base bundle's subagent control tools
+ * `list_agents` / `send_message` / `interrupt_agent`. They are distinct tools,
+ * not two names for one wire entry. The prompt below names `toolName`
+ * explicitly precisely because a model that reaches for the built-in
+ * `subagent` bypasses role persona and role toolFilter.
  *
  * The role list rendered into the prompt is derived dynamically from the live
  * plugin settings (`subagent-director.roles`) — the same source `guidance.ts`
@@ -34,6 +35,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { KNOWN_SESSION_EVENT_TYPES, type SessionEvent } from '@deepseek-ai/dsh-session';
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection';
 
+import { createOrchestrateToolGuard, ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS } from './orchestrate-guard.js';
 import type { SubagentDirectorSettings } from './settings.js';
 
 /** Stable system-prompt section name. */
@@ -126,7 +128,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * @param toolName - the configured model-facing delegation tool name.
  */
 export function buildOrchestratorFrame(toolName: string): string {
-  return `You are a PURE ORCHESTRATOR. Your only action is to call the \`${toolName}\` tool (provided by the subagent-director plugin) to delegate work. You must NEVER read, write, edit, grep, find, or execute anything yourself.
+  return `You are a PURE ORCHESTRATOR. Your only productive action is to call the \`${toolName}\` tool (provided by the subagent-director plugin) to delegate work. You must NEVER write, edit, execute, or run anything yourself — this contract is ENFORCED at the tool level: any write/execution tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing. You MAY use read-only tools (read / ls / grep / find) to gather the context you need to write precise dispatch briefs; anything that must be run, probed, or changed in the environment has to be done by a dispatched subagent. You manage the subagents you have already dispatched: \`list_agents\` lists your background subagents and their status, \`send_message\` starts a follow-up turn on one (use it to steer), and \`interrupt_agent\` stops its current turn.
 
 The subagent-director plugin supplies its role templates from settings (subagent-director.roles) and the guidance section 'subagent-director:roles'. Delegate exactly one task per call:
 
@@ -171,7 +173,8 @@ export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, too
 5. If the user's request names a specific role, dispatch to that role id. If a display name is given, map it to its id. If no role is named, dispatch to the role whose display name indicates coordination (e.g. contains 协调 / Orchestrator / Coordinator); when no such role exists, dispatch to the first configured role and let it decompose and coordinate.
 6. Unclear dependencies or missing information -> ask the USER, never guess.
 7. For independent fan-out you may set run_in_background: true and collect results later; for relay steps set run_in_background: false so you wait for the result before dispatching the next stage.
-8. Finish only when every subagent has completed. Then output a summary report: who produced what, and remaining todos.`;
+8. Finish only when every subagent has completed. Then output a summary report: who produced what, and remaining todos.
+9. A \`BLOCKED: orchestrate mode\` tool result is the harness enforcing this contract, not a transient error — do not retry the blocked tool; dispatch the work via \`${toolName}\` (or gather context with a read-only tool) instead.`;
 }
 
 /**
@@ -281,17 +284,60 @@ function recentOrchestrateCommandRun(session: any): OrchestrateRequest {
 }
 
 /**
- * Wire the `/orchestrate` command, its session projection, and the
- * orchestrator prompt section into the host. Each host-plane service is
- * acquired lazily and guarded, so a missing service degrades to a no-op.
+ * Resolve the effective orchestrate mode for one of the candidate session
+ * objects that may carry the `orchestrate/change` event(s). Shared by the
+ * system-prompt section (prompt injection) and the tool guard (enforcement),
+ * so the two can never diverge on which session is in orchestrate mode.
+ * Returns 'on' as soon as any candidate says so; otherwise the first known
+ * value; `undefined` when no candidate yields a value (callers must treat
+ * that as "not on" and warn — never silently pretend).
+ * @param projections - the live sessionProjections service (or undefined).
+ * @param sessionCandidates - session objects to probe, most-canonical first.
+ * @param warn - optional sink for per-candidate projection errors.
+ */
+export function resolveOrchestrateMode(
+  projections: unknown,
+  sessionCandidates: readonly unknown[],
+  warn?: (message: string, err?: unknown) => void,
+): OrchestrateMode | undefined {
+  if (projections === undefined) return undefined;
+  let resolved: OrchestrateMode | undefined;
+  for (const candidate of sessionCandidates) {
+    try {
+      const snap: any = (projections as { snapshot: (session: unknown) => unknown }).snapshot(candidate);
+      const value = snap?.values?.[ORCHESTRATE_PROJECTION_KEY];
+      if (value && typeof value.mode === 'string') {
+        const m = value.mode as OrchestrateMode;
+        if (m === 'on') return 'on';
+        if (resolved === undefined) resolved = m;
+      }
+    } catch (err) {
+      warn?.(
+        'could not read orchestrator mode from projection for a candidate session (session identity may not match the session /orchestrate on wrote to):',
+        err,
+      );
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Wire the `/orchestrate` command, its session projection, the orchestrator
+ * prompt section, and the tool-level enforcement guard into the host. Each
+ * host-plane service is acquired lazily and guarded, so a missing service
+ * degrades to a no-op.
  * @param ctx - plugin context.
  * @param getSettings - returns the current settings snapshot.
  * @param toolName - the configured model-facing delegation tool name.
+ * @param options - optional policy overrides; `readOnlyTools` replaces the
+ * default read-only allow-list for the orchestrate guard (fail-closed design:
+ * any tool not in the allow-list is blocked for the main agent while mode is on).
  */
 export function applyOrchestrate(
   ctx: Context,
   getSettings: () => SubagentDirectorSettings,
   toolName: string,
+  options?: { readOnlyTools?: readonly string[] },
 ): void {
   // Register our event type on the shared KNOWN set so session logs carrying
   // `orchestrate/change` load in any boot that mounts this plugin.
@@ -463,6 +509,31 @@ export function applyOrchestrate(
     });
   });
 
+  // ---- tool-level enforcement (orchestrate guard) ------------------------
+  // The PURE ORCHESTRATOR contract used to be prompt-only and the model
+  // violated it (a live session: 77× bash, 3× edit, zero dispatches). Register
+  // a dsh-tools guard so the main agent of an orchestrate-on session is DENIED
+  // every non-allowlisted tool call, with a BLOCKED message that tells it to
+  // dispatch instead. `projections` is read live from the closure, so the
+  // guard becomes effective the moment the projection service resolves (same
+  // reactive path as the command handler). Policy + every scoping decision:
+  // see src/orchestrate-guard.ts (allow-list fail-closed; read-only tools
+  // allowed; subagent children exempt via durable session-header metadata;
+  // fail-open when the mode is unresolvable).
+  const readOnlyTools = options?.readOnlyTools ?? ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS;
+  ctx.effect(
+    () =>
+      ctx.tools.guard(
+        createOrchestrateToolGuard({
+          getProjections: () => projections,
+          toolName,
+          readOnlyTools,
+          warn: (message, err) => ctx.logger.warn('[orchestrate] ' + message, err),
+        }),
+      ),
+    'subagent-director:orchestrate-tool-guard',
+  );
+
   const systemPrompt: any = ctx.get('systemPrompt');
   if (systemPrompt !== undefined) {
     systemPrompt.section({
@@ -519,32 +590,14 @@ export function applyOrchestrate(
           if (cmdReq === 'off') return '';
         }
 
-        let resolvedMode: OrchestrateMode | undefined;
+        // Shared resolver with the tool guard (single source of truth for
+        // "which session is orchestrate-on"); per-candidate errors surface
+        // through the warn sink instead of being swallowed (D1).
         let sawError = false;
-        for (const candidate of sessionCandidates) {
-          try {
-            const snap = projections.snapshot(candidate);
-            const value = snap?.values?.[ORCHESTRATE_PROJECTION_KEY];
-            if (value && typeof value.mode === 'string') {
-              const m = value.mode as OrchestrateMode;
-              // 'on' wins immediately; otherwise remember the first known value.
-              if (m === 'on') {
-                resolvedMode = 'on';
-                break;
-              }
-              if (resolvedMode === undefined) resolvedMode = m;
-            }
-          } catch (err) {
-            // Surface instead of silently dropping (D1). The most likely cause
-            // is a session-identity mismatch: this candidate is not the object
-            // the /orchestrate command wrote the orchestrate/change event to.
-            sawError = true;
-            ctx.logger.warn(
-              '[orchestrate] could not read orchestrator mode from projection for a candidate session (session identity may not match the session /orchestrate on wrote to):',
-              (err as Error)?.message,
-            );
-          }
-        }
+        const resolvedMode = resolveOrchestrateMode(projections, sessionCandidates, (message, err) => {
+          sawError = true;
+          ctx.logger.warn('[orchestrate] ' + message, (err as Error)?.message);
+        });
 
         if (resolvedMode === undefined) {
           // Could not resolve any mode from any candidate session. Warn with the

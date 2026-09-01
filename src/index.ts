@@ -61,9 +61,16 @@ export {
   ORCHESTRATE_PROJECTION_KEY,
   ORCHESTRATE_EVENT_TYPE,
   ORCHESTRATE_VALID_MODES,
+  resolveOrchestrateMode,
   type OrchestrateMode,
   type OrchestrateRequest,
 } from './orchestrate.js';
+export {
+  createOrchestrateToolGuard,
+  orchestrateAlwaysAllowedTools,
+  ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
+  type OrchestrateGuardDeps,
+} from './orchestrate-guard.js';
 export { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
 export {
   SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE,
@@ -107,8 +114,8 @@ export function apply(ctx: Context, config: import('./config.js').DirectorConfig
   // ---- role guidance ----------------------------------------------------
   applyGuidance(ctx, getSettings, toolName);
 
-  // ---- orchestrate command + projection + prompt section ----------------
-  applyOrchestrate(ctx, getSettings, toolName);
+  // ---- orchestrate command + projection + prompt section + tool guard ----
+  applyOrchestrate(ctx, getSettings, toolName, { readOnlyTools: config.orchestrateReadOnlyTools });
 
   // ---- close_subagent tool ----------------------------------------------
   // Provider-independent (drain is a global subagents operation), so it

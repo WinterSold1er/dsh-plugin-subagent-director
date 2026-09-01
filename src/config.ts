@@ -15,6 +15,8 @@
  */
 import z from '@deepseek-ai/schemastery';
 
+import { ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS } from './orchestrate-guard.js';
+
 /**
  * Cordis-layer plugin configuration.
  *
@@ -70,6 +72,18 @@ export interface DirectorConfig {
    * chain.
    */
   applyDefaultRoute?: boolean;
+
+  /**
+   * Model-facing names of the read-only tools the orchestrator may still call
+   * while `/orchestrate on` is in effect (context gathering for dispatch
+   * decisions). Everything NOT in this list and not a dispatch/interaction
+   * tool is blocked for the main agent in that mode (fail-closed allow-list;
+   * see src/orchestrate-guard.ts for the full policy). Defaults to the DSH
+   * host read-only surface. Extend it for host builds or MCP servers that
+   * expose additional read-only tools; never list a tool that writes, edits,
+   * or executes.
+   */
+  orchestrateReadOnlyTools?: readonly string[];
 }
 
 /** Schemastery schema for {@link DirectorConfig}. */
@@ -81,4 +95,5 @@ export const Config = z.object({
   maxDepth: z
     .union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed')]),
   applyDefaultRoute: z.boolean().default(true),
+  orchestrateReadOnlyTools: z.array(z.string()).default([...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS]),
 });

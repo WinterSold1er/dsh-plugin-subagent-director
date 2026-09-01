@@ -68,6 +68,25 @@ describe('buildOrchestratorFrame', () => {
   it('substitutes the tool name into the framing', () => {
     expect(buildOrchestratorFrame('dispatch')).toContain('`dispatch` tool');
   });
+
+  it('matches the guard policy: read-only tools allowed, write/execute blocked at tool level', () => {
+    const text = buildOrchestratorFrame('dispatch');
+    // The frame must not keep the old "NEVER read, grep, find" wording, which
+    // contradicts the tool guard (read-only tools are allowed for context).
+    expect(text).not.toMatch(/NEVER read, write, edit/);
+    expect(text).toMatch(/read-only tools/);
+    expect(text).toMatch(/NEVER write, edit, execute/);
+    expect(text).toMatch(/ENFORCED at the tool level/);
+  });
+
+  it('names the subagent control tools the guard allow-lists (prompt ↔ enforcement parity)', () => {
+    // The orchestrator must be told the control family exists, or it cannot
+    // discover/steer/stop its subagents even though the guard would allow it.
+    const text = buildOrchestratorFrame('dispatch');
+    expect(text).toContain('list_agents');
+    expect(text).toContain('send_message');
+    expect(text).toContain('interrupt_agent');
+  });
 });
 
 describe('ORCHESTRATE_VALID_MODES', () => {
