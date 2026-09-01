@@ -521,18 +521,32 @@ export function applyOrchestrate(
   // allowed; subagent children exempt via durable session-header metadata;
   // fail-open when the mode is unresolvable).
   const readOnlyTools = options?.readOnlyTools ?? ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS;
-  ctx.effect(
-    () =>
-      ctx.tools.guard(
-        createOrchestrateToolGuard({
-          getProjections: () => projections,
-          toolName,
-          readOnlyTools,
-          warn: (message, err) => ctx.logger.warn('[orchestrate] ' + message, err),
-        }),
-      ),
-    'subagent-director:orchestrate-tool-guard',
-  );
+  // Capability check before registering: `guard()` is part of the 0.1.1-line
+  // dsh-tools ToolRuntime contract, but hosts on older dsh lines (and minimal
+  // tools stubs) expose a register-only service. Degrade to prompt-only with
+  // an honest warning instead of throwing during entry activation (the
+  // register-only stub in test/orchestrate-cordis.test.ts pins this).
+  const tools: any = ctx.tools;
+  if (tools) {
+    if (typeof tools.guard === 'function') {
+      ctx.effect(
+        () =>
+          tools.guard(
+            createOrchestrateToolGuard({
+              getProjections: () => projections,
+              toolName,
+              readOnlyTools,
+              warn: (message, err) => ctx.logger.warn('[orchestrate] ' + message, err),
+            }),
+          ),
+        'subagent-director:orchestrate-tool-guard',
+      );
+    } else {
+      ctx.logger.warn(
+        '[orchestrate] tools service has no guard() (dsh-tools 0.1.1+ ToolRuntime) — tool-level enforcement of the PURE ORCHESTRATOR contract is UNAVAILABLE on this host; the mode degrades to prompt-only.',
+      );
+    }
+  }
 
   const systemPrompt: any = ctx.get('systemPrompt');
   if (systemPrompt !== undefined) {

@@ -18,7 +18,10 @@
  * dispatch instead of a silent failure. Guards are monotonic: no listener or
  * later guard can turn a denial back into permission. The guard is registered
  * on the plugin's plain context, so it sees every agent in the process; the
- * per-session scoping below is what keeps it from over-reaching.
+ * per-session scoping below is what keeps it from over-reaching. Registration
+ * is capability-checked in applyOrchestrate: a tools service without guard()
+ * (older dsh lines, minimal stubs) degrades to prompt-only with a warning
+ * instead of throwing during entry activation.
  *
  * POLICY (deliberate, documented per team decision):
  *   - ALLOWLIST, fail-closed. While orchestrate mode is ON for a session, the

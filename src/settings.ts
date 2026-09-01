@@ -95,7 +95,13 @@ export const RoleTemplateSchema = z.object({
  * optional (schemastery object fields are optional by default); roles is a
  * string-keyed dict of RoleTemplateSchema.
  */
-export const SettingsSchema = z.object({
+// pnpm portability (TS2883): the inferred object-schema type names cosmokit's
+// `Dict` (via z.dict), which is not resolvable from this package's d.ts under
+// pnpm's strict layout (cosmokit is a transitive dep). Annotate with the
+// schemastery global schema type (defaulted generics) — type-only, zero
+// runtime change; callers infer settings types from the entry value, not the
+// schema's inferred output.
+export const SettingsSchema: Schemastery = z.object({
   defaultProvider: z.string(),
   defaultModel: z.string(),
   defaultReasoningEffort: z.string(),
