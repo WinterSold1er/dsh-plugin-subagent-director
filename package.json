@@ -19,6 +19,7 @@
     "cordis.patch.yml"
   ],
   "scripts": {
+    "prepare": "pnpm build",
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
     "test": "vitest run",
