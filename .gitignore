@@ -1,5 +1,5 @@
 node_modules/
-lib/
+# lib/ 现预提交到 git，供 github 源 (tarball) 直接装载——prepare 检测到 lib 存在则跳过构建
 *.log
 .DS_Store
 coverage/

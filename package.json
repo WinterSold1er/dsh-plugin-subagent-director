@@ -19,7 +19,7 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "prepare": "pnpm build",
+    "prepare": "node -e "process.exit(require('fs').existsSync('lib/index.js')?0:1)" || pnpm build",
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
     "test": "vitest run",

@@ -1,0 +1,135 @@
+/**
+ * Route resolver - the pure-function core of Subagent Director (design section 6).
+ *
+ * Resolves which LLM provider/model an agentOptions should carry for one
+ * subagent delegation, walking the four-layer fallback chain:
+ *
+ *   1. call     - explicit arguments on the tool call (per-call override)
+ *   2. role     - the role template bound by args.role (or defaultRole)
+ *   3. default  - plugin default provider/model from settings
+ *   4. inherit  - nothing configured: do NOT inject anything, let the seam
+ *                 inherit the parent agent (zero intrusion, AC-3.2)
+ *
+ * Field resolution is independent: each of provider/model/reasoningEffort is
+ * filled by the highest-priority layer that specifies it. persona and
+ * toolFilter come ONLY from the role layer.
+ *
+ * The function is pure, synchronous, and side-effect-free (<1ms) so it is
+ * trivially unit-testable and replayable (FR-3.3, NFR-2).
+ *
+ * NOTE on the layer field: because resolution is field-level independent, one
+ * delegation can draw different fields from different layers. layer reports
+ * the highest-priority layer that contributed at least one resolved
+ * agentOptions field ('inherit' when none did) - a single value kept for
+ * observability (section 10), while per-field provenance lives implicitly in
+ * the resolved fields.
+ *
+ * NOTE on reasoningEffort: the DSH AgentOptions shape only carries
+ * provider/model/maxTokens (dsh-agent runtime-types). reasoningEffort is
+ * therefore surfaced on the result SEPARATELY from agentOptions so a caller
+ * can surface/validate it without pretending it belongs on
+ * SubagentStartRequest.agentOptions.
+ */
+import type { AgentOptions } from '@deepseek-ai/dsh-agent';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
+/** Which layer supplied the resolved agentOptions fields. */
+export type RouteLayer = 'call' | 'role' | 'default' | 'inherit';
+/** A user-defined role template (design section 5.2). */
+export interface RoleTemplate {
+    /** Required, non-empty display name. */
+    displayName: string;
+    /** Required, non-empty delegation guidance shown to the main agent. */
+    description: string;
+    /** Persona text injected into the subagent (role-layer only). */
+    persona?: string;
+    /** LLM route provider override (role-layer only). */
+    provider?: string;
+    /** Model id override (role-layer only). */
+    model?: string;
+    /** Reasoning effort override (role-layer only; advisory). */
+    reasoningEffort?: string;
+    /** Tool scoping (role-layer only; requires toolFilter capability at runtime). */
+    toolFilter?: {
+        allow?: string[];
+        deny?: string[];
+    };
+}
+/** Subagent Director settings namespace (design section 5.2). */
+export interface SubagentDirectorSettings {
+    /** Default LLM route provider (default-layer). */
+    defaultProvider?: string;
+    /** Default model id (default-layer). */
+    defaultModel?: string;
+    /** Default reasoning effort (default-layer; advisory). */
+    defaultReasoningEffort?: string;
+    /** Id of the role template used when no role is given (default-layer). */
+    defaultRole?: string;
+    /** Whether an invalid role-bound model falls back to the parent (default true). */
+    fallbackOnInvalid?: boolean;
+    /** Named role templates. */
+    roles?: Record<string, RoleTemplate>;
+    /**
+     * Orchestrate-mode tool-level enforcement (design: strict default).
+     * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
+     * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
+     * stays prompt-only. This is a USER-SETTING override of the plugin's mount
+     * config (DirectorConfig.orchestrateEnforcement); when absent the mount
+     * config default applies, and that ultimately defaults to 'strict'.
+     */
+    orchestrateEnforcement?: OrchestrateEnforcement;
+}
+/** Explicit per-call arguments accepted by the subagent_role tool. */
+export interface RouteCallArgs {
+    role?: string;
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+}
+/** The parent agent's options (inherit-layer reference; not injected). */
+export interface RouteParent {
+    provider?: string;
+    model?: string;
+}
+/** Inputs to a single route resolution. */
+export interface RouteInput {
+    args?: RouteCallArgs;
+    settings: SubagentDirectorSettings;
+    parent?: RouteParent;
+}
+/** A tool scoping restriction mirroring dsh-tools ToolRestriction. */
+export interface RouteToolFilter {
+    allow?: string[];
+    deny?: string[];
+}
+/** The result of one route resolution. */
+export interface RouteResult {
+    /** Highest-priority layer that supplied a resolved agentOptions field. */
+    layer: RouteLayer;
+    /**
+     * Resolved provider/model overrides to inject into
+     * SubagentStartRequest.agentOptions. Present (non-empty) only when a
+     * non-inherit layer configured at least one of these fields; otherwise
+     * undefined so the seam inherits the parent (AC-3.2).
+     */
+    agentOptions?: Pick<AgentOptions, 'provider' | 'model'>;
+    /** Resolved reasoning effort (advisory; NOT part of AgentOptions). */
+    reasoningEffort?: string;
+    /** Resolved role id when a valid role template was bound (role layer). */
+    roleId?: string;
+    /** Persona contributed by the role layer, when a valid role was bound. */
+    persona?: string;
+    /** Tool filter contributed by the role layer, when a valid role was bound. */
+    toolFilter?: RouteToolFilter;
+    /** Human-readable warnings for degraded references (nonexistent role, etc.). */
+    warnings: string[];
+}
+/**
+ * Whether a tool filter actually restricts anything. dsh-settings materializes
+ * an absent `toolFilter` as `{ allow: [], deny: [] }` (issue #2), so a filter
+ * whose allow/deny are both empty is treated as unconfigured — writing it into
+ * a SubagentStartRequest would make the core restrict all tools (tools=0).
+ */
+export declare function hasToolFilter(filter: RouteToolFilter | undefined): boolean;
+/** Core pure resolution logic. */
+export declare function resolveRoute(input: RouteInput): RouteResult;
+//# sourceMappingURL=route-resolver.d.ts.map
