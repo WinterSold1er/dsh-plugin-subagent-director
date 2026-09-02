@@ -79,13 +79,15 @@ describe('buildOrchestratorFrame', () => {
     expect(text).toMatch(/ENFORCED at the tool level/);
   });
 
-  it('names the subagent control tools the guard allow-lists (prompt ↔ enforcement parity)', () => {
-    // The orchestrator must be told the control family exists, or it cannot
-    // discover/steer/stop its subagents even though the guard would allow it.
+  it('names the subagent control tools, job_output, and vectr MCP tools the guard allow-lists (prompt ↔ enforcement parity)', () => {
+    // The orchestrator must be told the control family, job_output, and vectr exist,
+    // or it cannot discover/steer/stop its subagents or search code even though the guard would allow it.
     const text = buildOrchestratorFrame('dispatch');
     expect(text).toContain('list_agents');
     expect(text).toContain('send_message');
     expect(text).toContain('interrupt_agent');
+    expect(text).toContain('job_output');
+    expect(text).toContain('mcp__vectr__*');
   });
 
   it('strict frame claims tool-level enforcement (the guard really blocks)', () => {

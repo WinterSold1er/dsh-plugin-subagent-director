@@ -109,11 +109,20 @@ export declare const ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS: readonly string[];
  */
 export declare const ORCHESTRATE_SUBAGENT_CONTROL_TOOLS: readonly string[];
 /**
+ * Prefix check for vectr MCP tool family (`mcp__vectr__*` for default workspace
+ * daemon and `mcp__vectr_<slug>__*` for multi-codebase daemons). Vectr provides
+ * semantic search, code navigation, and working memory retrieval without mutating
+ * the workspace, so the orchestrator is allowed to use it for context gathering.
+ * Other MCP write/exec tools (e.g. `mcp__github__*`) remain blocked (fail-closed).
+ */
+export declare function isVectrMcpTool(name: string): boolean;
+/**
  * Tools the orchestrator may always call (any mode): the dispatch surface
  * (this plugin's delegation tool under its configured name, the base bundle's
  * built-in subagent tools, the plugin's close tool), the base bundle's
- * subagent control tools, plus the interaction tools the orchestration rules
- * require (asking the user, tracking todos).
+ * subagent control tools, subagent result collection (`job_output`), plus the
+ * interaction tools the orchestration rules require (asking the user,
+ * tracking todos).
  */
 export declare function orchestrateAlwaysAllowedTools(toolName: string): readonly string[];
 export interface OrchestrateGuardDeps {

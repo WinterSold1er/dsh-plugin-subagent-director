@@ -13,6 +13,7 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools';
 
 import {
   createOrchestrateToolGuard,
+  isVectrMcpTool,
   orchestrateAlwaysAllowedTools,
   ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
   ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
@@ -83,13 +84,34 @@ function makeGuard(
 
 
 
+describe('isVectrMcpTool', () => {
+  it('identifies default workspace vectr tools (mcp__vectr__*) and multi-codebase tools (mcp__vectr_<slug>__*)', () => {
+    expect(isVectrMcpTool('mcp__vectr__search')).toBe(true);
+    expect(isVectrMcpTool('mcp__vectr__locate')).toBe(true);
+    expect(isVectrMcpTool('mcp__vectr__trace')).toBe(true);
+    expect(isVectrMcpTool('mcp__vectr__vectr_search')).toBe(true);
+    expect(isVectrMcpTool('mcp__vectr_demo__vectr_search')).toBe(true);
+    expect(isVectrMcpTool('mcp__vectr_vnm__search')).toBe(true);
+  });
+
+  it('rejects non-vectr MCP tools and host tools (fail-closed)', () => {
+    expect(isVectrMcpTool('mcp__github__create_issue')).toBe(false);
+    expect(isVectrMcpTool('mcp__bash__run')).toBe(false);
+    expect(isVectrMcpTool('mcp__filesystem__write_file')).toBe(false);
+    expect(isVectrMcpTool('bash')).toBe(false);
+    expect(isVectrMcpTool('edit')).toBe(false);
+    expect(isVectrMcpTool('write')).toBe(false);
+  });
+});
+
 describe('orchestrateAlwaysAllowedTools', () => {
-  it('always includes the configured delegation tool, built-in subagent tools, close, control, and interaction tools', () => {
+  it('always includes the configured delegation tool, built-in subagent tools, close, control, job_output, and interaction tools', () => {
     const allowed = orchestrateAlwaysAllowedTools('my_dispatch');
     expect(allowed).toContain('my_dispatch');
     expect(allowed).toContain('subagent');
     expect(allowed).toContain('subagent_fork');
     expect(allowed).toContain('close_subagent');
+    expect(allowed).toContain('job_output');
     expect(allowed).toContain('ask_user_question');
     expect(allowed).toContain('todo_write');
     // The DSH base bundle's subagent control family (list_agents / send_message /
@@ -148,12 +170,14 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
     }
   });
 
-  it('is fail-closed: unlisted/unknown tools are blocked too', () => {
+  it('is fail-closed: unlisted/unknown tools and other MCP tools are blocked too', () => {
     const guard = makeGuard('on');
     expect(guard(makeExec('mcp_some_write_tool', { agent: mainAgent }))).toContain('BLOCKED');
+    expect(guard(makeExec('mcp__github__create_issue', { agent: mainAgent }))).toContain('BLOCKED');
+    expect(guard(makeExec('mcp__filesystem__write_file', { agent: mainAgent }))).toContain('BLOCKED');
   });
 
-  it('allows dispatch tools, subagent control tools, interaction tools, and read-only tools', () => {
+  it('allows dispatch tools, subagent control tools, job_output, interaction tools, read-only tools, and vectr MCP tools', () => {
     const guard = makeGuard('on');
     for (const name of [
       'subagent_role',
@@ -161,9 +185,13 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
       'subagent_fork',
       'close_subagent',
       ...ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
+      'job_output',
       'ask_user_question',
       'todo_write',
       ...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
+      'mcp__vectr__search',
+      'mcp__vectr__vectr_search',
+      'mcp__vectr_demo__search',
     ]) {
       expect(guard(makeExec(name, { agent: mainAgent })), name).toBeUndefined();
     }

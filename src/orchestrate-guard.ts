@@ -127,11 +127,23 @@ export const ORCHESTRATE_SUBAGENT_CONTROL_TOOLS: readonly string[] = [
 ];
 
 /**
+ * Prefix check for vectr MCP tool family (`mcp__vectr__*` for default workspace
+ * daemon and `mcp__vectr_<slug>__*` for multi-codebase daemons). Vectr provides
+ * semantic search, code navigation, and working memory retrieval without mutating
+ * the workspace, so the orchestrator is allowed to use it for context gathering.
+ * Other MCP write/exec tools (e.g. `mcp__github__*`) remain blocked (fail-closed).
+ */
+export function isVectrMcpTool(name: string): boolean {
+  return name.startsWith('mcp__vectr__') || name.startsWith('mcp__vectr_');
+}
+
+/**
  * Tools the orchestrator may always call (any mode): the dispatch surface
  * (this plugin's delegation tool under its configured name, the base bundle's
  * built-in subagent tools, the plugin's close tool), the base bundle's
- * subagent control tools, plus the interaction tools the orchestration rules
- * require (asking the user, tracking todos).
+ * subagent control tools, subagent result collection (`job_output`), plus the
+ * interaction tools the orchestration rules require (asking the user,
+ * tracking todos).
  */
 export function orchestrateAlwaysAllowedTools(toolName: string): readonly string[] {
   return [
@@ -140,6 +152,7 @@ export function orchestrateAlwaysAllowedTools(toolName: string): readonly string
     'subagent_fork',
     CLOSE_SUBAGENT_TOOL_NAME,
     ...ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
+    'job_output',
     'ask_user_question',
     'todo_write',
   ];
@@ -182,13 +195,13 @@ export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuar
     '` yourself. This is enforced at the tool level, not a transient error: retrying will keep failing. ' +
     'Use read-only tools (' +
     readOnlyList +
-    ') only to gather context for dispatch decisions, and dispatch the actual work via `' +
+    ') or vectr MCP tools (mcp__vectr__*) only to gather context for dispatch decisions, and dispatch the actual work via `' +
     deps.toolName +
-    '` (or the built-in subagent tools) instead. To inspect or steer subagents you already started, use `list_agents`, `send_message`, or `interrupt_agent`.';
+    '` (or the built-in subagent tools) instead. To inspect or steer subagents you already started, use `list_agents`, `send_message`, or `interrupt_agent` (and `job_output` to collect background results).';
 
   return (exec: Readonly<ToolExecution>): string | undefined => {
-    // Fast path: the allow-listed tools are never blocked, in any mode.
-    if (allowed.has(exec.name)) return undefined;
+    // Fast path: the allow-listed tools and vectr MCP tools are never blocked, in any mode.
+    if (allowed.has(exec.name) || isVectrMcpTool(exec.name)) return undefined;
     // Resolution is per-call so a settings toggle is live (no restart). A
     // provided getEnforcement wins over the static `enforcement` value.
     const enforcement: OrchestrateEnforcement =
