@@ -31,10 +31,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import { SessionId } from '@deepseek-ai/dsh-session';
+import * as dshSettings from '@deepseek-ai/dsh-settings';
 import {
   SettingsConflictError,
-  settingsNamespace,
   type SettingsDescriptor,
+  type SettingsNamespace,
   type SettingsProvider,
 } from '@deepseek-ai/dsh-settings';
 import type {
@@ -225,7 +226,9 @@ export async function directorMutate(
   ops: readonly SettingsPathOpView[],
   expectedRevision: number | undefined,
 ): Promise<RpcResult<SettingsNamespaceView>> {
-  const branded = settingsNamespace(ns);
+  const branded = typeof (dshSettings as any).settingsNamespace === 'function'
+    ? (dshSettings as any).settingsNamespace(ns)
+    : (ns as SettingsNamespace);
   try {
     await mutate(branded, ops, expectedRevision);
   } catch (error) {

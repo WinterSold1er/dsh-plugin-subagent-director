@@ -17,16 +17,22 @@
  */
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import {
-  installSettingsSection,
-  settingsNamespace,
-  type SettingsSectionHooks,
+import * as dshSettings from '@deepseek-ai/dsh-settings';
+import type {
+  SettingsNamespace,
+  SettingsSectionHooks,
 } from '@deepseek-ai/dsh-settings';
 
 import type { RoleTemplate, SubagentDirectorSettings } from './route-resolver.js';
 
+const toSettingsNamespace = (value: string): SettingsNamespace => {
+  const fn = (dshSettings as any).settingsNamespace;
+  if (typeof fn === 'function') return fn(value);
+  return value as SettingsNamespace;
+};
+
 /** Settings namespace for Subagent Director (design section 0 naming resolution). */
-export const SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE = settingsNamespace('subagent-director');
+export const SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE: SettingsNamespace = toSettingsNamespace('subagent-director');
 
 export type { RoleTemplate, SubagentDirectorSettings } from './route-resolver.js';
 
@@ -186,13 +192,23 @@ export function installDirectorSettings(
   entry: SubagentDirectorSettings,
   hooks: SettingsSectionHooks<SubagentDirectorSettings>,
 ): void {
-  if (ctx.get('settings') === undefined) {
+  const settings = ctx.get('settings') as any;
+  if (settings === undefined) {
     ctx.logger.debug(
       '[subagent-director] no settings service mounted; using composition config and skipping settings section registration',
     );
     return;
   }
-  installSettingsSection(ctx, SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE, SettingsSchema, entry, hooks);
+  if (typeof settings.installSection === 'function') {
+    settings.installSection(ctx, SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE, SettingsSchema, entry, hooks);
+    return;
+  }
+  const installFn = (dshSettings as any).installSettingsSection;
+  if (typeof installFn === 'function') {
+    installFn(ctx, SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE, SettingsSchema, entry, hooks);
+    return;
+  }
+  throw new Error('settings service does not support installSection or installSettingsSection');
 }
 
 /** Convenience exported alias used by tests. */
