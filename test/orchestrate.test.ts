@@ -10,6 +10,8 @@ import {
   buildOrchestratorFrame,
   ORCHESTRATE_VALID_MODES,
   detectOrchestrateRequest,
+  extractSessionEvents,
+  detectPerTurnOrchestrate,
 } from '../src/orchestrate.js';
 
 const settings = {
@@ -69,52 +71,39 @@ describe('buildOrchestratorFrame', () => {
     expect(buildOrchestratorFrame('dispatch')).toContain('`dispatch` tool');
   });
 
-  it('matches the guard policy: read-only tools allowed, write/execute blocked at tool level', () => {
+  it('matches the guard policy: read-only tools and probing tools forbidden, pure orchestration enforced', () => {
     const text = buildOrchestratorFrame('dispatch');
-    // The frame must not keep the old "NEVER read, grep, find" wording, which
-    // contradicts the tool guard (read-only tools are allowed for context).
-    expect(text).not.toMatch(/NEVER read, write, edit/);
-    expect(text).toMatch(/read-only tools/);
-    expect(text).toMatch(/NEVER write, edit, execute/);
+    expect(text).toMatch(/NEVER read, probe, write, edit/);
+    expect(text).toMatch(/delegate ALL exploration, research, investigation, and execution/);
     expect(text).toMatch(/ENFORCED at the tool level/);
   });
 
-  it('names the subagent control tools, job_output, and vectr MCP tools the guard allow-lists (prompt ↔ enforcement parity)', () => {
-    // The orchestrator must be told the control family, job_output, and vectr exist,
-    // or it cannot discover/steer/stop its subagents or search code even though the guard would allow it.
+  it('names the subagent control tools and job_output the guard allow-lists (prompt ↔ enforcement parity)', () => {
     const text = buildOrchestratorFrame('dispatch');
     expect(text).toContain('list_agents');
     expect(text).toContain('send_message');
     expect(text).toContain('interrupt_agent');
     expect(text).toContain('job_output');
-    expect(text).toContain('mcp__vectr__*');
   });
 
   it('strict frame claims tool-level enforcement (the guard really blocks)', () => {
     const text = buildOrchestratorFrame('dispatch', 'strict');
     expect(text).toMatch(/ENFORCED at the tool level/);
-    expect(text).not.toMatch(/NOT tool-enforced/);
   });
 
-  it('lenient frame does NOT falsely claim full enforcement — states sticky-only scope honestly', () => {
+  it('lenient frame also claims tool-level enforcement (physical circuit breaker without exemption)', () => {
     const text = buildOrchestratorFrame('dispatch', 'lenient');
-    // The false "ENFORCED" claim must not appear in lenient mode.
-    expect(text).not.toMatch(/ENFORCED at the tool level:/);
-    // Honest wording: sticky-only enforcement, per-turn not enforced.
-    expect(text).toMatch(/ENFORCED at the tool level only while orchestrator mode is sticky/);
-    expect(text).toMatch(/NOT tool-enforced/);
-    expect(text).toContain('/orchestrate on');
+    expect(text).toMatch(/ENFORCED at the tool level/);
   });
 
   it('buildOrchestratorFrame defaults to strict', () => {
     expect(buildOrchestratorFrame('dispatch')).toMatch(/ENFORCED at the tool level:/);
   });
 
-  it('renderOrchestratorPrompt threads the enforcement level into the frame', () => {
-    const lenient = renderOrchestratorPrompt(settings, 'subagent_role', 'lenient');
-    expect(lenient).toMatch(/NOT tool-enforced/);
-    const strict = renderOrchestratorPrompt(settings, 'subagent_role', 'strict');
-    expect(strict).toMatch(/ENFORCED at the tool level:/);
+  it('renderOrchestratorPrompt threads the enforcement into the frame', () => {
+    const prompt = renderOrchestratorPrompt(settings, 'subagent_role', 'lenient');
+    expect(prompt).toMatch(/ENFORCED at the tool level:/);
+    expect(prompt).toContain('subagent_role');
   });
 });
 
@@ -157,9 +146,77 @@ describe('detectOrchestrateRequest', () => {
   it('returns undefined for questions about orchestrate mode', () => {
     expect(detectOrchestrateRequest('什么是orchestrate模式')).toBeUndefined();
     expect(detectOrchestrateRequest('帮我解释一下使用orchestrate模式的好处')).toBeUndefined();
+    expect(detectOrchestrateRequest('请问使用orchestrate模式注意事项')).toBeUndefined();
+    expect(detectOrchestrateRequest('请问使用orchestrate模式')).toBeUndefined();
+    expect(detectOrchestrateRequest('使用orchestrate模式注意事项')).toBeUndefined();
   });
 
   it('returns undefined for unrelated text', () => {
     expect(detectOrchestrateRequest('帮我分析这个项目')).toBeUndefined();
+  });
+});
+
+describe('extractSessionEvents', () => {
+  it('extracts from snapshotEvents() on real DSH Session instance', () => {
+    const realEvents = [{ type: 'turn/start', seq: 0 }];
+    const session = {
+      snapshotEvents: () => realEvents,
+    };
+    expect(extractSessionEvents(session)).toBe(realEvents);
+  });
+
+  it('prioritizes snapshotEvents() over events and log', () => {
+    const snap = [{ type: 'snap', seq: 1 }];
+    const evs = [{ type: 'events', seq: 2 }];
+    const log = [{ type: 'log', seq: 3 }];
+    const session = {
+      snapshotEvents: () => snap,
+      events: evs,
+      log: log,
+    };
+    expect(extractSessionEvents(session)).toBe(snap);
+  });
+
+  it('falls back to events when snapshotEvents is not a function', () => {
+    const evs = [{ type: 'events', seq: 2 }];
+    const session = { events: evs };
+    expect(extractSessionEvents(session)).toBe(evs);
+  });
+
+  it('falls back to log when snapshotEvents and events are missing', () => {
+    const log = [{ type: 'log', seq: 3 }];
+    const session = { log };
+    expect(extractSessionEvents(session)).toBe(log);
+  });
+
+  it('falls back gracefully if snapshotEvents throws', () => {
+    const evs = [{ type: 'events', seq: 2 }];
+    const session = {
+      snapshotEvents: () => {
+        throw new Error('snapshot error');
+      },
+      events: evs,
+    };
+    expect(extractSessionEvents(session)).toBe(evs);
+  });
+
+  it('returns undefined for null, undefined, or non-object', () => {
+    expect(extractSessionEvents(null)).toBeUndefined();
+    expect(extractSessionEvents(undefined)).toBeUndefined();
+    expect(extractSessionEvents('string')).toBeUndefined();
+  });
+
+  it('allows detectPerTurnOrchestrate on real DSH Session with only snapshotEvents()', () => {
+    const realSession = {
+      snapshotEvents: () => [
+        { type: 'turn/start', seq: 0 },
+        {
+          type: 'user/message',
+          seq: 1,
+          data: { content: [{ type: 'text', text: '使用orchestrate模式帮我分析' }] },
+        },
+      ],
+    };
+    expect(detectPerTurnOrchestrate(realSession)).toBe('on');
   });
 });

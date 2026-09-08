@@ -13,7 +13,7 @@
  */
 import type { ClientConnectionRpc, ConfigurableProviderView, IApiClient, ModelProviderGroup, SettingsNamespaceView } from '@deepseek-ai/dsh-client-connection/client';
 import type { SubagentDirectorKey } from './locales.js';
-import { type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
+import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import { type DefaultModelEdits, type MutationErrorKind, type RoleDraft, type StoredRole, type StoredSection, type OrchestrateEnforcement } from './store-logic.js';
 /** The settings namespace this page reads and writes. */
 export declare const SUBAGENT_DIRECTOR_NS = "subagent-director";

@@ -57,6 +57,7 @@ export {
   renderOrchestratorUnavailableNotice,
   buildOrchestratorFrame,
   detectOrchestrateRequest,
+  extractSessionEvents,
   ORCHESTRATE_SECTION_NAME,
   ORCHESTRATE_SECTION_ORDER,
   ORCHESTRATE_PROJECTION_KEY,

@@ -46,6 +46,15 @@ export type OrchestrateMode = (typeof ORCHESTRATE_VALID_MODES)[number];
 /** Per-turn orchestrate request parsed from one user message. */
 export type OrchestrateRequest = 'on' | 'off' | undefined;
 /**
+ * Safe helper to extract session events across diverse Session implementations.
+ * Real DSH Session instances hide private events and export via snapshotEvents().
+ * Priority order:
+ * 1. s.snapshotEvents?.()
+ * 2. s.events (if Array)
+ * 3. s.log (if Array)
+ */
+export declare function extractSessionEvents(session: unknown): readonly any[] | undefined;
+/**
  * Detect whether a user message requests pure-orchestrator mode for this turn.
  * Slash form: `/orchestrate` — `off` → off; no args, `on`, or any task text
  * (e.g. `/orchestrate 分析上周A股走势`) → on.

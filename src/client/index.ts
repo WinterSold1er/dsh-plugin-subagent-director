@@ -79,16 +79,20 @@ export function apply(ctx: ClientContext): void {
   // The settings namespace rides the self-published /subagent-director RPC
   // channel (the Host apiproxy allowlist would answer settings-not-exposed);
   // llm.providers/llm.models still go through connection.api.llm.
+  const llmFace = (connection as any)?.api?.llm ?? {
+    providers: async () => ({ result: { ok: true, value: { providers: [] } } }),
+    models: async () => ({ result: { ok: true, value: { groups: [] } } }),
+  };
   const controller = new SubagentOptionsStore({
     rpc: connection.rpc,
-    llm: connection.api.llm,
+    llm: llmFace,
     t: t as (key: SubagentDirectorKey) => string,
   });
   const useSnapshot = bindSnapshotSelector<SubagentOptionsState>(controller.store);
   const injected = (): SubagentOptionsSectionInjected => ({
     controller,
     useSnapshot,
-    api: connection.api,
+    api: ((connection as any)?.api ?? {}),
     t: t as SubagentOptionsSectionInjected['t'],
   });
   const dockInjected = (): SubagentModelDockInjected => ({ rpc: connection.rpc });

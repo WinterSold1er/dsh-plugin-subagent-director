@@ -62,6 +62,30 @@ export type OrchestrateMode = (typeof ORCHESTRATE_VALID_MODES)[number];
 export type OrchestrateRequest = 'on' | 'off' | undefined;
 
 /**
+ * Safe helper to extract session events across diverse Session implementations.
+ * Real DSH Session instances hide private events and export via snapshotEvents().
+ * Priority order:
+ * 1. s.snapshotEvents?.()
+ * 2. s.events (if Array)
+ * 3. s.log (if Array)
+ */
+export function extractSessionEvents(session: unknown): readonly any[] | undefined {
+  if (!session || typeof session !== 'object') return undefined;
+  const s = session as any;
+  if (typeof s.snapshotEvents === 'function') {
+    try {
+      const evs = s.snapshotEvents();
+      if (Array.isArray(evs)) return evs;
+    } catch {
+      // Fall through if snapshotEvents throws
+    }
+  }
+  if (Array.isArray(s.events)) return s.events;
+  if (Array.isArray(s.log)) return s.log;
+  return undefined;
+}
+
+/**
  * Detect whether a user message requests pure-orchestrator mode for this turn.
  * Slash form: `/orchestrate` — `off` → off; no args, `on`, or any task text
  * (e.g. `/orchestrate 分析上周A股走势`) → on.
@@ -77,7 +101,16 @@ export function detectOrchestrateRequest(text: string): OrchestrateRequest {
     if (arg === 'off') return 'off';
     return 'on';
   }
-  if (/^(请|麻烦|麻烦你|帮我|请帮我|我想|我要)?\s*使用\s*orchestrate\s*(模式|mode)/i.test(trimmed)) return 'on';
+  // Exclude question forms (e.g. 请问..., 什么是..., 如何...)
+  if (/^(请问|什么是|怎么|如何|怎样)/i.test(trimmed)) return undefined;
+  // Natural language form: negative lookahead to exclude "请问" and trailing question words like 注意事项
+  if (
+    /^(请(?!问)|麻烦|麻烦你|帮我|请帮我|我想|我要)?\s*使用\s*orchestrate\s*(模式|mode)(?!.*?(?:注意事项|区别|优缺点|特点|好不好|怎么样|吗|？|\?))(\s*[:：]|\s*.*$)/i.test(
+      trimmed,
+    )
+  ) {
+    return 'on';
+  }
   if (/^use\s+orchestrate\s+mode/i.test(trimmed)) return 'on';
   return undefined;
 }
@@ -158,10 +191,8 @@ export function detectPerTurnOrchestrate(session: unknown): OrchestrateRequest {
  */
 export function buildOrchestratorFrame(toolName: string, enforcement: OrchestrateEnforcement = 'strict'): string {
   const enforcementSentence =
-    enforcement === 'lenient'
-      ? 'This contract is ENFORCED at the tool level only while orchestrator mode is sticky (/orchestrate on): in that state any write/execution tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing. This turn was orchestrated per-turn (/orchestrate <task> or 使用orchestrate模式), which is NOT tool-enforced — honor this contract on your own discipline for this turn.'
-      : 'This contract is ENFORCED at the tool level: any write/execution tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing.';
-  return `You are a PURE ORCHESTRATOR. Your only productive action is to call the \`${toolName}\` tool (provided by the subagent-director plugin) to delegate work. You must NEVER write, edit, execute, or run anything yourself — ${enforcementSentence} You MAY use read-only tools (read / ls / grep / find) and vectr MCP tools (mcp__vectr__*) to gather the context you need to write precise dispatch briefs; anything that must be run, probed, or changed in the environment has to be done by a dispatched subagent. You manage the subagents you have already dispatched: \`list_agents\` lists your background subagents and their status, \`send_message\` starts a follow-up turn on one (use it to steer), \`interrupt_agent\` stops its current turn, and \`job_output\` collects background subagent results.
+    'This contract is ENFORCED at the tool level: any disallowed tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing.';
+  return `You are a PURE ORCHESTRATOR. Your only productive action is to call the \`${toolName}\` tool (provided by the subagent-director plugin) to delegate work. You must NEVER read, probe, write, edit, execute, or run anything yourself — ${enforcementSentence} You must delegate ALL exploration, research, investigation, and execution tasks to dispatched subagents via \`${toolName}\`. You manage the subagents you have already dispatched: \`list_agents\` lists your background subagents and their status, \`send_message\` starts a follow-up turn on one (use it to steer), \`interrupt_agent\` stops its current turn, and \`job_output\` collects background subagent results.
 
 The subagent-director plugin supplies its role templates from settings (subagent-director.roles) and the guidance section 'subagent-director:roles'. Delegate exactly one task per call:
 
@@ -199,7 +230,7 @@ export function renderOrchestratorRoles(settings: SubagentDirectorSettings, tool
  */
 export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, toolName: string, enforcement: OrchestrateEnforcement = 'strict'): string {
   return `${buildOrchestratorFrame(toolName, enforcement)}\n\n${renderOrchestratorRoles(settings, toolName)}\n\nOrchestration rules:
-1. Only dispatch. Forbid doing the work yourself.
+1. Only dispatch. Forbid doing the work or probing yourself. Delegate research/investigation to researcher/investigator roles.
 2. Independent tasks -> dispatch them in parallel (multiple ${toolName} calls in one turn).
 3. Dependent / relay tasks -> wait for the prior subagent to finish, then dispatch the next stage.
 4. Every subagent prompt must be self-contained: goal, constraints, output format, acceptance criteria. Subagents receive NO parent context.
@@ -207,7 +238,7 @@ export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, too
 6. Unclear dependencies or missing information -> ask the USER, never guess.
 7. For independent fan-out you may set run_in_background: true and collect results later (via \`job_output\`); for relay steps set run_in_background: false so you wait for the result before dispatching the next stage.
 8. Finish only when every subagent has completed. Then output a summary report: who produced what, and remaining todos.
-9. A \`BLOCKED: orchestrate mode\` tool result is the harness enforcing this contract, not a transient error — do not retry the blocked tool; dispatch the work via \`${toolName}\` (or gather context with read-only / vectr tools) instead.`;
+9. A \`BLOCKED: orchestrate mode\` tool result is the harness enforcing this contract, not a transient error — do not retry the blocked tool; dispatch the work via \`${toolName}\` instead.`;
 }
 
 /**
@@ -238,7 +269,7 @@ function renderOrchestratorSection(settings: SubagentDirectorSettings, toolName:
  * @param session - a live Session (or a faithful fake with `.events`).
  */
 function currentTurnUserMessageText(session: any): string | undefined {
-  const events = session?.events;
+  const events = extractSessionEvents(session);
   if (!Array.isArray(events)) return undefined;
   let turnStart = -1;
   for (const ev of events) {
@@ -270,7 +301,7 @@ function currentTurnUserMessageText(session: any): string | undefined {
  * @param session - a live Session (or a faithful fake with `.events`).
  */
 function recentOrchestrateCommandRun(session: any): OrchestrateRequest {
-  const events = session?.events;
+  const events = extractSessionEvents(session);
   if (!Array.isArray(events)) return undefined;
   let turnStart = -1;
   let cmdSeq = -1;
@@ -333,24 +364,50 @@ export function resolveOrchestrateMode(
   sessionCandidates: readonly unknown[],
   warn?: (message: string, err?: unknown) => void,
 ): OrchestrateMode | undefined {
-  if (projections === undefined) return undefined;
   let resolved: OrchestrateMode | undefined;
-  for (const candidate of sessionCandidates) {
-    try {
-      const snap: any = (projections as { snapshot: (session: unknown) => unknown }).snapshot(candidate);
-      const value = snap?.values?.[ORCHESTRATE_PROJECTION_KEY];
-      if (value && typeof value.mode === 'string') {
-        const m = value.mode as OrchestrateMode;
-        if (m === 'on') return 'on';
-        if (resolved === undefined) resolved = m;
+
+  // Level 1: WeakMap projection service snapshot
+  if (projections !== undefined && typeof (projections as any).snapshot === 'function') {
+    for (const candidate of sessionCandidates) {
+      if (!candidate) continue;
+      try {
+        const snap: any = (projections as { snapshot: (session: unknown) => unknown }).snapshot(candidate);
+        const value = snap?.values?.[ORCHESTRATE_PROJECTION_KEY];
+        if (value && typeof value.mode === 'string') {
+          const m = value.mode as OrchestrateMode;
+          if (m === 'on') return 'on';
+          if (resolved === undefined) resolved = m;
+        }
+      } catch (err) {
+        warn?.(
+          'could not read orchestrator mode from projection for a candidate session (session identity may not match the session /orchestrate on wrote to):',
+          err,
+        );
       }
-    } catch (err) {
-      warn?.(
-        'could not read orchestrator mode from projection for a candidate session (session identity may not match the session /orchestrate on wrote to):',
-        err,
-      );
     }
   }
+
+  // Level 2 & 3: Fallback reverse scan of snapshotEvents / session.events / log
+  // Protects against WeakMap misses due to wrapper / proxy reference mismatch
+  for (const candidate of sessionCandidates) {
+    if (!candidate) continue;
+    const events = extractSessionEvents(candidate);
+
+    if (Array.isArray(events) && events.length > 0) {
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i];
+        if (ev && ev.type === ORCHESTRATE_EVENT_TYPE) {
+          const mode = ev.data?.mode;
+          if (mode === 'on' || mode === 'off') {
+            if (mode === 'on') return 'on';
+            if (resolved === undefined) resolved = mode;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   return resolved;
 }
 

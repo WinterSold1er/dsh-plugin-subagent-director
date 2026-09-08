@@ -105,11 +105,11 @@ describe('isVectrMcpTool', () => {
 });
 
 describe('orchestrateAlwaysAllowedTools', () => {
-  it('always includes the configured delegation tool, built-in subagent tools, close, control, job_output, and interaction tools', () => {
+  it('includes the configured delegation tool, close, control, job_output, and interaction tools, but excludes native subagent tools', () => {
     const allowed = orchestrateAlwaysAllowedTools('my_dispatch');
     expect(allowed).toContain('my_dispatch');
-    expect(allowed).toContain('subagent');
-    expect(allowed).toContain('subagent_fork');
+    expect(allowed).not.toContain('subagent');
+    expect(allowed).not.toContain('subagent_fork');
     expect(allowed).toContain('close_subagent');
     expect(allowed).toContain('job_output');
     expect(allowed).toContain('ask_user_question');
@@ -177,23 +177,30 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
     expect(guard(makeExec('mcp__filesystem__write_file', { agent: mainAgent }))).toContain('BLOCKED');
   });
 
-  it('allows dispatch tools, subagent control tools, job_output, interaction tools, read-only tools, and vectr MCP tools', () => {
+  it('allows vectr MCP tools (mcp__vectr__* and mcp__vectr_<slug>__*) via fast path', () => {
+    const guard = makeGuard('on');
+    expect(guard(makeExec('mcp__vectr__search', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('mcp__vectr__locate', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('mcp__vectr_proj__search', { agent: mainAgent }))).toBeUndefined();
+    // Non-vectr MCP tools remain blocked
+    expect(guard(makeExec('mcp__github__create_issue', { agent: mainAgent }))).toContain('BLOCKED');
+  });
+
+  it('allows only dispatch tools, subagent control tools, job_output, and interaction tools', () => {
     const guard = makeGuard('on');
     for (const name of [
       'subagent_role',
-      'subagent',
-      'subagent_fork',
       'close_subagent',
       ...ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
       'job_output',
       'ask_user_question',
       'todo_write',
-      ...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
-      'mcp__vectr__search',
-      'mcp__vectr__vectr_search',
-      'mcp__vectr_demo__search',
     ]) {
       expect(guard(makeExec(name, { agent: mainAgent })), name).toBeUndefined();
+    }
+    // Native subagent tools, probing tools, and default read tools are strictly blocked
+    for (const name of ['subagent', 'subagent_fork', 'read', 'grep', 'glob', 'ls', 'find']) {
+      expect(guard(makeExec(name, { agent: mainAgent }))).toContain('BLOCKED');
     }
   });
 
@@ -218,13 +225,13 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
 describe('createOrchestrateToolGuard — enforcement matrix (sticky × per-turn × strict/lenient)', () => {
   const mainAgent = { session: { header: { id: 'main-session' } } };
 
-  it('strict: blocks write/execute tools on a per-turn natural-language turn (no sticky on)', () => {
+  it('strict: blocks write/execute and read tools on a per-turn natural-language turn (no sticky on)', () => {
     const guard = makeGuard('off', { enforcement: 'strict' });
     const perTurn = { agent: { session: makePerTurnSession('nl') } };
     expect(guard(makeExec('bash', perTurn))).toContain('BLOCKED');
     expect(guard(makeExec('edit', perTurn))).toContain('BLOCKED');
-    // Read-only tools stay allowed on the same turn.
-    expect(guard(makeExec('read', perTurn))).toBeUndefined();
+    expect(guard(makeExec('read', perTurn))).toContain('BLOCKED');
+    expect(guard(makeExec('subagent_role', perTurn))).toBeUndefined();
   });
 
   it('strict: blocks write/execute tools on a /orchestrate <task> turn (command/run inside turn boundary)', () => {
@@ -255,18 +262,21 @@ describe('createOrchestrateToolGuard — enforcement matrix (sticky × per-turn 
     expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
   });
 
-  it('lenient: does NOT block a per-turn turn (prompt-only), even when a per-turn request is present', () => {
+  it('lenient: also blocks per-turn turn (physical circuit breaker without lenient exemption)', () => {
     const guard = makeGuard('off', { enforcement: 'lenient' });
     for (const kind of ['nl', 'cmd'] as const) {
       const perTurn = { agent: { session: makePerTurnSession(kind) } };
-      expect(guard(makeExec('bash', perTurn)), kind).toBeUndefined();
+      expect(guard(makeExec('bash', perTurn)), kind).toContain('BLOCKED');
+      expect(guard(makeExec('read', perTurn)), kind).toContain('BLOCKED');
+      expect(guard(makeExec('subagent_role', perTurn)), kind).toBeUndefined();
     }
   });
 
   it('lenient: still blocks on the sticky projection (the hard boundary)', () => {
     const guard = makeGuard('on', { enforcement: 'lenient' });
     expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
-    expect(guard(makeExec('read', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('read', { agent: mainAgent }))).toContain('BLOCKED');
+    expect(guard(makeExec('subagent_role', { agent: mainAgent }))).toBeUndefined();
   });
 
   it('defaults to strict when enforcement is omitted (existing behaviour preserved)', () => {
@@ -335,5 +345,32 @@ describe('resolveOrchestrateMode', () => {
   it('returns undefined when no candidate yields a value', () => {
     const projections = { snapshot: () => ({ values: {} }) };
     expect(resolveOrchestrateMode(projections, [s1])).toBeUndefined();
+  });
+
+  it('falls back to reverse scan of session.events when projections WeakMap misses or is missing', () => {
+    const sessionWithEvents = {
+      id: 's-events',
+      events: [
+        { type: 'user/message', seq: 0 },
+        { type: 'orchestrate/change', seq: 1, data: { mode: 'on' } },
+      ],
+    };
+    // Projections service present but returns empty for this session (WeakMap miss)
+    const projectionsEmpty = { snapshot: () => ({ values: {} }) };
+    expect(resolveOrchestrateMode(projectionsEmpty, [sessionWithEvents])).toBe('on');
+
+    // Projections service completely undefined
+    expect(resolveOrchestrateMode(undefined, [sessionWithEvents])).toBe('on');
+  });
+
+  it('falls back to reverse scan of session.snapshotEvents() function', () => {
+    const sessionWithMethod = {
+      id: 's-method',
+      snapshotEvents: () => [
+        { type: 'orchestrate/change', seq: 0, data: { mode: 'off' } },
+        { type: 'orchestrate/change', seq: 1, data: { mode: 'on' } },
+      ],
+    };
+    expect(resolveOrchestrateMode(undefined, [sessionWithMethod])).toBe('on');
   });
 });
