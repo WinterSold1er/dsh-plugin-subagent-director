@@ -26,7 +26,7 @@ export type { DirectorConfig } from './config.js';
 export { assertDelegationCapabilities, buildSubagentRequest, createDelegationParameters, createDelegationOutputSchema, createDelegationTool, DELEGATION_TOOL_PREFIX, resolveDelegationMode, renderDelegationResult, type DelegationToolArgs, type DelegationResult, type DelegationRoute, type DelegationModeDecision, type SubagentRequestParts, } from './delegation-tool.js';
 export { applyGuidance, renderRolesGuidance, GUIDANCE_SECTION_ORDER, GUIDANCE_SECTION_NAME } from './guidance.js';
 export { applyOrchestrate, renderOrchestratorPrompt, renderOrchestratorRoles, renderOrchestratorUnavailableNotice, buildOrchestratorFrame, detectOrchestrateRequest, extractSessionEvents, ORCHESTRATE_SECTION_NAME, ORCHESTRATE_SECTION_ORDER, ORCHESTRATE_PROJECTION_KEY, ORCHESTRATE_EVENT_TYPE, ORCHESTRATE_VALID_MODES, resolveOrchestrateMode, type OrchestrateMode, type OrchestrateRequest, } from './orchestrate.js';
-export { createOrchestrateToolGuard, orchestrateAlwaysAllowedTools, ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS, type OrchestrateGuardDeps, } from './orchestrate-guard.js';
+export { createOrchestrateToolGuard, orchestrateAlwaysAllowedTools, ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS, AGY_TO_DSH_MAP, STRICT_MIRROR_RUN_CODE, unwrapToolIntent, type UnwrappedToolIntent, type OrchestrateGuardDeps, } from './orchestrate-guard.js';
 export { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
 export { SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE, SettingsSchema, validateDirectorSettings, installDirectorSettings, type RoleTemplate, type SubagentDirectorSettings, } from './settings.js';
 export declare const name = "subagent-director";

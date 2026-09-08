@@ -76,7 +76,7 @@
  *     unresolvable mode means "not on"; blocking there would break hosts where
  *     orchestrate was never enabled. Each unresolvable path warns once.
  */
-import type { ToolGuard } from '@deepseek-ai/dsh-tools';
+import type { ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools';
 /**
  * Orchestrate guard enforcement level, mirroring DirectorConfig.
  * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
@@ -108,6 +108,33 @@ export declare const ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS: readonly string[];
  * agent's catalog, so a whitelist entry for it would be dead weight.
  */
 export declare const ORCHESTRATE_SUBAGENT_CONTROL_TOOLS: readonly string[];
+/**
+ * Unwrapped tool call intent with native DSH normalized semantics.
+ */
+export interface UnwrappedToolIntent {
+    /** The effective tool name normalized to DSH tool semantics (for allowlist checks). */
+    effectiveName: string;
+    /** The raw inner tool name (e.g. 'run_command', 'write_to_file', or native 'bash') for error messages. */
+    rawInnerName: string;
+    /** Whether the execution was wrapped inside an agy_tool envelope or run_code. */
+    isWrapped: boolean;
+    /** The unwrapped arguments or input payload, if extractable. */
+    innerArguments?: unknown;
+}
+/**
+ * Strict single-line mirror run_code regex.
+ * Must and only match a strict single-line mirror replay statement (optional single-line leading comment allowed).
+ */
+export declare const STRICT_MIRROR_RUN_CODE: RegExp;
+/**
+ * Mapping dictionary from Antigravity/Gemini CLI tool names to native DSH tool semantics.
+ */
+export declare const AGY_TO_DSH_MAP: Readonly<Record<string, string>>;
+/**
+ * Unwrap ToolExecution to discover the underlying tool intent across
+ * direct native calls, `agy_tool` envelopes, and `run_code` scripts.
+ */
+export declare function unwrapToolIntent(exec: Readonly<ToolExecution>, delegationToolName: string): UnwrappedToolIntent;
 /**
  * Prefix check for vectr MCP tool family (`mcp__vectr__*` for default workspace
  * daemon and `mcp__vectr_<slug>__*` for multi-codebase daemons). Vectr provides

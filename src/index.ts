@@ -71,6 +71,10 @@ export {
   createOrchestrateToolGuard,
   orchestrateAlwaysAllowedTools,
   ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
+  AGY_TO_DSH_MAP,
+  STRICT_MIRROR_RUN_CODE,
+  unwrapToolIntent,
+  type UnwrappedToolIntent,
   type OrchestrateGuardDeps,
 } from './orchestrate-guard.js';
 export { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
