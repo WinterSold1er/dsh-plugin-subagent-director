@@ -80,8 +80,14 @@ export function apply(ctx: ClientContext): void {
   // channel (the Host apiproxy allowlist would answer settings-not-exposed);
   // llm.providers/llm.models still go through connection.api.llm.
   const llmFace = (connection as any)?.api?.llm ?? {
-    providers: async () => ({ result: { ok: true, value: { providers: [] } } }),
-    models: async () => ({ result: { ok: true, value: { groups: [] } } }),
+    providers: async (payload: any = {}) => {
+      const res = await connection.rpc.call('/api', 'llm/listConfigurableProviders', payload);
+      return { result: res.ok ? { ok: true, value: { providers: res.value ?? [] } } : { ok: false, error: res.error } };
+    },
+    models: async (payload: any = {}) => {
+      const res = await connection.rpc.call('/api', 'session/modelCatalog', payload);
+      return { result: res.ok ? { ok: true, value: res.value ?? { groups: [] } } : { ok: false, error: res.error } };
+    },
   };
   const controller = new SubagentOptionsStore({
     rpc: connection.rpc,
