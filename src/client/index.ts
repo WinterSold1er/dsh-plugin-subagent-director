@@ -81,11 +81,11 @@ export function apply(ctx: ClientContext): void {
   // llm.providers/llm.models still go through connection.api.llm.
   const llmFace = (connection as any)?.api?.llm ?? {
     providers: async (payload: any = {}) => {
-      const res = await connection.rpc.call('/api', 'llm/listConfigurableProviders', payload);
+      const res = await connection.rpc.call('/api', 'llm/listConfigurableProviders', { args: payload });
       return { result: res.ok ? { ok: true, value: { providers: res.value ?? [] } } : { ok: false, error: res.error } };
     },
     models: async (payload: any = {}) => {
-      const res = await connection.rpc.call('/api', 'session/modelCatalog', payload);
+      const res = await connection.rpc.call('/api', 'session/modelCatalog', { args: payload });
       return { result: res.ok ? { ok: true, value: res.value ?? { groups: [] } } : { ok: false, error: res.error } };
     },
   };
