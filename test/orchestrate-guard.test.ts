@@ -269,12 +269,12 @@ describe('createOrchestrateToolGuard — enforcement matrix (sticky × per-turn 
     expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
   });
 
-  it('lenient: also blocks per-turn turn (physical circuit breaker without lenient exemption)', () => {
+  it('lenient: does NOT block per-turn turn (lenient skips per-turn tool blocking)', () => {
     const guard = makeGuard('off', { enforcement: 'lenient' });
     for (const kind of ['nl', 'cmd'] as const) {
       const perTurn = { agent: { session: makePerTurnSession(kind) } };
-      expect(guard(makeExec('bash', perTurn)), kind).toContain('BLOCKED');
-      expect(guard(makeExec('read', perTurn)), kind).toContain('BLOCKED');
+      expect(guard(makeExec('bash', perTurn)), kind).toBeUndefined();
+      expect(guard(makeExec('read', perTurn)), kind).toBeUndefined();
       expect(guard(makeExec('subagent_role', perTurn)), kind).toBeUndefined();
     }
   });

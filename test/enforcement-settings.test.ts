@@ -90,17 +90,17 @@ function makeGuard(getEnforcement: () => OrchestrateEnforcement): (e: ToolExecut
     expect(guard(makeExec('bash', 'on'))).toMatch(/BLOCKED/);
   });
 
-  it('lenient also blocks a write tool on per-turn orchestration (physical circuit breaker)', () => {
+  it('lenient does NOT block a write tool on per-turn orchestration', () => {
     const guard = makeGuard(() => 'lenient');
-    expect(guard(makeExec('bash', 'on'))).toMatch(/BLOCKED/);
+    expect(guard(makeExec('bash', 'on'))).toBeUndefined();
   });
 
-  it('both levels consistently block write tools on per-turn orchestration', () => {
+  it('toggling enforcement level dynamically updates per-turn guard behavior', () => {
     let level: OrchestrateEnforcement = 'strict';
     const guard = makeGuard(() => level);
     expect(guard(makeExec('bash', 'on'))).toMatch(/BLOCKED/);
     level = 'lenient';
-    expect(guard(makeExec('bash', 'on'))).toMatch(/BLOCKED/);
+    expect(guard(makeExec('bash', 'on'))).toBeUndefined();
     level = 'strict';
     expect(guard(makeExec('bash', 'on'))).toMatch(/BLOCKED/);
   });

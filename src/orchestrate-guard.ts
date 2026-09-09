@@ -473,9 +473,12 @@ export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuar
     // so an event-based check would falsely block the child.
     if (origin === 'subagent' || delegationDepth > 0) return undefined;
 
-    // Physical circuit breaker: per-turn orchestration is strictly enforced
-    // at the tool level without any lenient mode exemption.
-    if (detectPerTurnOrchestrate(agent.session) === 'on') return blocked(intent.rawInnerName);
+    const enforcement = deps.getEnforcement?.() ?? deps.enforcement ?? 'strict';
+    // Per-turn orchestration tool-level block (controlled by enforcement setting:
+    // strict blocks write/execute tools; lenient skips per-turn tool blocking).
+    if (enforcement === 'strict' && detectPerTurnOrchestrate(agent.session) === 'on') {
+      return blocked(intent.rawInnerName);
+    }
 
     // Sticky orchestrate mode resolution (with 3-tier fallback to session.events)
     const projections = deps.getProjections();

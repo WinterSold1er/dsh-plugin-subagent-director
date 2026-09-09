@@ -144,12 +144,7 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
                     model: section?.defaultModel,
                     reasoningEffort: section?.defaultReasoningEffort,
                 }}
-                t={t}
-            />
-            <EnforcementRow
-                controller={controller}
-                writable={writable}
-                current={section?.orchestrateEnforcement ?? 'strict'}
+                enforcement={section?.orchestrateEnforcement ?? 'strict'}
                 t={t}
             />
             <RolesBlock
@@ -166,11 +161,12 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
 }
 
 /** The default-model row: provider → model → reasoning-effort cascade + restore. */
-function DefaultModelRow({ controller, groups, writable, current, t }: {
+function DefaultModelRow({ controller, groups, writable, current, enforcement, t }: {
     controller: SubagentOptionsStore;
     groups: readonly ModelProviderGroup[];
     writable: boolean;
     current: { provider?: string; model?: string; reasoningEffort?: string };
+    enforcement: 'strict' | 'lenient';
     t: (key: SubagentDirectorKey) => string;
 }): JSX.Element {
     const [draft, setDraft] = useState<DefaultRowDraft>({
@@ -181,6 +177,22 @@ function DefaultModelRow({ controller, groups, writable, current, t }: {
     const [busy, setBusy] = useState(false);
     const [failure, setFailure] = useState<string | undefined>(undefined);
     const [done, setDone] = useState(false);
+    const [enforcementBusy, setEnforcementBusy] = useState(false);
+    const [enforcementFailure, setEnforcementFailure] = useState<string | undefined>(undefined);
+
+    const toggleEnforcement = async (): Promise<void> => {
+        const next = enforcement === 'strict' ? 'lenient' : 'strict';
+        setEnforcementBusy(true);
+        setEnforcementFailure(undefined);
+        try {
+            const message = await controller.setEnforcement(next);
+            if (message !== undefined) {
+                setEnforcementFailure(message);
+            }
+        } finally {
+            setEnforcementBusy(false);
+        }
+    };
 
     // Reflect a fresh server snapshot into the draft (a pushed invalidation or a
     // restore reload; a user mid-edit is not clobbered because the section owns
@@ -286,65 +298,21 @@ function DefaultModelRow({ controller, groups, writable, current, t }: {
                 </div>
             </div>
             {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
+            {enforcementFailure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{enforcementFailure}</div> : null}
             {done ? <div style={{ color: token.accent, fontSize: 12 }}>{t('restoreDone')}</div> : null}
-            <div style={{ display: 'flex', gap: 8 }}>
-                <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
-            </div>
-        </div>
-    );
-}
-
-/** The orchestrate-guard strictness toggle (strict ⇄ lenient). */
-function EnforcementRow({ controller, writable, current, t }: {
-    controller: SubagentOptionsStore;
-    writable: boolean;
-    current: 'strict' | 'lenient';
-    t: (key: SubagentDirectorKey) => string;
-}): JSX.Element {
-    const [busy, setBusy] = useState(false);
-    const [failure, setFailure] = useState<string | undefined>(undefined);
-    const [done, setDone] = useState(false);
-
-    const choose = async (next: 'strict' | 'lenient'): Promise<void> => {
-        if (next === current) return;
-        setBusy(true);
-        setFailure(undefined);
-        try {
-            const message = await controller.setEnforcement(next);
-            if (message !== undefined) {
-                setFailure(message);
-                return;
-            }
-            setDone(true);
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    return (
-        <div style={cardStyle}>
-            <div style={rowStyle}>
-                <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('enforcementHeading')}</strong>
-                <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{t('enforcementHint')}</p>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
+                </div>
                 <button
-                    style={current === 'strict' ? primaryButtonStyle : ghostButtonStyle}
-                    disabled={!writable || busy}
-                    onClick={() => void choose('strict')}
+                    style={enforcement === 'strict' ? primaryButtonStyle : ghostButtonStyle}
+                    disabled={!writable || enforcementBusy}
+                    onClick={() => void toggleEnforcement()}
+                    title={enforcement === 'strict' ? t('enforcementStrictDesc') : t('enforcementLenientDesc')}
                 >
-                    {t('enforcementStrict')}
-                </button>
-                <button
-                    style={current === 'lenient' ? primaryButtonStyle : ghostButtonStyle}
-                    disabled={!writable || busy}
-                    onClick={() => void choose('lenient')}
-                >
-                    {t('enforcementLenient')}
+                    {enforcement === 'strict' ? t('enforcementToggleOn') : t('enforcementToggleOff')}
                 </button>
             </div>
-            {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-            {done ? <div style={{ color: token.accent, fontSize: 12 }}>{t('restoreDone')}</div> : null}
         </div>
     );
 }

@@ -28,7 +28,7 @@ import {
   type DirectorViewSuccess,
 } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store';
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
 import {
   addRoleOps,
   classifyMutateError,
