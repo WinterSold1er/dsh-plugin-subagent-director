@@ -34,7 +34,7 @@ import { SessionId } from '@deepseek-ai/dsh-session';
 import { SettingsConflictError, type SettingsDescriptor, type SettingsProvider } from '@deepseek-ai/dsh-settings';
 import type { RpcResult, RpcError, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-host-apiproxy/api';
 import { SettingsSchema } from './settings.js';
-import { SUBAGENT_DIRECTOR_RPC_VIEW, SUBAGENT_DIRECTOR_RPC_MUTATE, SUBAGENT_DIRECTOR_RPC_CLOSE, SUBAGENT_DIRECTOR_RPC_MODEL, SUBAGENT_DIRECTOR_RPC_TOOLS, type DirectorCloseRequest, type DirectorModelRequest, type DirectorModelSuccess, type DirectorMutateRequest, type DirectorToolsSuccess, type DirectorViewSuccess } from './bridge-contract.js';
+import { SUBAGENT_DIRECTOR_RPC_VIEW, SUBAGENT_DIRECTOR_RPC_MUTATE, SUBAGENT_DIRECTOR_RPC_CLOSE, SUBAGENT_DIRECTOR_RPC_MODEL, SUBAGENT_DIRECTOR_RPC_TOOLS, type DirectorCatalogSuccess, type DirectorCloseRequest, type DirectorModelRequest, type DirectorModelSuccess, type DirectorMutateRequest, type DirectorToolsSuccess, type DirectorViewSuccess } from './bridge-contract.js';
 import { SUBAGENT_DIRECTOR_ROUTE_PATH } from './envelope.js';
 /** Wire route path the bridge owns on the Host web server. */
 export { SUBAGENT_DIRECTOR_ROUTE_PATH as SUBAGENT_DIRECTOR_RPC_CHANNEL };
@@ -116,9 +116,21 @@ export declare function directorConflict(conflict: SettingsConflictError): RpcEr
  */
 export declare function directorViewOk(settings: SettingsProvider): RpcResult<DirectorViewSuccess>;
 /**
+ * Build the ok payload for the settingsCatalog endpoint: the official Subagent
+ * model-selection allowlist (the `subagent-model-selection` section the user
+ * edits in the official "Subagent" settings card). The page may select a
+ * provider/model ONLY from this list. An absent/disabled/empty section yields
+ * an empty list — the client then shows the "no authorized models" notice and
+ * the host-side resolver applies no constraint (inherits the parent model).
+ */
+export declare function directorCatalogOk(settings: SettingsProvider | undefined): RpcResult<DirectorCatalogSuccess>;
+/**
  * Execute one path-op mutation against the settings seam and map the outcome
  * to an RpcResult carrying the new redacted view (or a `settings-conflict` /
  * `settings-rejected` error). Pure over the injected primitives for testing.
+ * alpha.4: namespaces are plain kebab-case strings (the seam validates the
+ * format and throws TypeError for malformed ones, which this maps to
+ * `settings-rejected`).
  */
 export declare function directorMutate(mutate: SettingsProvider['mutate'], describe: SettingsProvider['describe'], ns: string, ops: readonly SettingsPathOpView[], expectedRevision: number | undefined): Promise<RpcResult<SettingsNamespaceView>>;
 /** Re-export the wire-envelope helpers so tests import them from one place. */

@@ -1,19 +1,22 @@
 /**
- * Subagent Director settings page store: one snapshot joining the configurable
- * provider directory (llm.providers), the model catalog (llm.models), and the
- * plugin's own settings namespace. The settings namespace is read/written
- * through the plugin's self-published `/subagent-director` RPC channel (see
- * ../remote.ts) because the Host apiproxy's exposedNamespaces() allowlist
- * answers `settings-not-exposed` for namespaces outside the model-provider
- * plane; llm.providers/llm.models still ride `connection.api.llm`. The host
- * stays the single fact source: every write travels as path ops through the
- * bridge's settingsMutate endpoint with an expectedRevision optimistic lock,
- * and pushed invalidations (settings/document-updated, llm/adapters-updated,
+ * Subagent Director settings page store: one snapshot joining the authorized
+ * Subagent model-selection allowlist (the official `subagent-model-selection`
+ * section), the plugin's own settings namespace, and the model-visible tool
+ * catalog. The settings namespace and the allowlist are read through the
+ * plugin's self-published `/subagent-director` RPC channel (see ../remote.ts)
+ * because the Host apiproxy's exposedNamespaces() allowlist answers
+ * `settings-not-exposed` for namespaces outside the model-provider plane, and
+ * the alpha.4 client no longer has a full llm catalog RPC. The host stays the
+ * single fact source: every write travels as path ops through the bridge's
+ * settingsMutate endpoint with an expectedRevision optimistic lock, and pushed
+ * invalidations (settings/document-updated, llm/adapters-updated,
  * connection/reset) refresh the page.
  */
-import type { ClientConnectionRpc, ConfigurableProviderView, IApiClient, ModelProviderGroup, SettingsNamespaceView } from '@deepseek-ai/dsh-client-connection/client';
+import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client';
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import { type DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
-import { type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
+import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import { type DefaultModelEdits, type MutationErrorKind, type RoleDraft, type StoredRole, type StoredSection, type OrchestrateEnforcement } from './store-logic.js';
 /** The settings namespace this page reads and writes. */
 export declare const SUBAGENT_DIRECTOR_NS = "subagent-director";
@@ -30,10 +33,15 @@ export interface SubagentOptionsState {
     section: StoredSection | undefined;
     /** Current expectedRevision for the next mutate. */
     revision: number;
-    /** Configurable provider directory. */
-    providers: readonly ConfigurableProviderView[];
-    /** Model catalog groups (provider → models → reasoning efforts). */
-    models: readonly ModelProviderGroup[];
+    /** Whether the official Subagent model selection is enabled. */
+    modelSelectionEnabled: boolean;
+    /**
+     * The authorized exact routes — the ONLY selectable provider/model pairs.
+     * Empty when the official selection is off or no model is authorized yet;
+     * the page then shows the "no authorized models" notice and the host-side
+     * resolver inherits the parent model.
+     */
+    allowedRoutes: readonly DirectorAllowedRoute[];
     /** Distinct model-visible tool names for role tool-set editing. */
     tools: readonly string[];
     /** The plugin name surfaced to the section. */
@@ -54,12 +62,10 @@ export declare class BridgeUnavailableError extends Error {
 }
 /** Whether a thrown value means the bridge channel could not be called at all. */
 export declare function isBridgeUnavailable(error: unknown): boolean;
-/** Wire faces the settings page needs: the bridge RPC caller, the llm face, and copy. */
+/** Wire faces the settings page needs: the bridge RPC caller and copy. */
 export interface StoreWire {
     /** Generic RPC caller for the self-published /subagent-director channel. */
     rpc: ClientConnectionRpc;
-    /** llm catalog/adapters face (still connection.api.llm). */
-    llm: IApiClient['llm'];
     /** Section copy binder (for the localized bridge-unavailable message). */
     t: (key: SubagentDirectorKey) => string;
 }

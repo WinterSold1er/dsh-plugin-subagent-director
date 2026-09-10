@@ -1,4 +1,4 @@
-import type { ModelProviderGroup } from '@deepseek-ai/dsh-client-connection/client';
+import type { DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
 import type { RoleDraft, StoredRole } from './store-logic.js';
 export interface RoleCardProps {
@@ -8,8 +8,8 @@ export interface RoleCardProps {
     role: StoredRole;
     /** Whether this role is the defaultRole. */
     isDefault: boolean;
-    /** Available providers (for the provider select). */
-    groups: readonly ModelProviderGroup[];
+    /** Authorized routes (the only selectable provider/model pairs). */
+    routes: readonly DirectorAllowedRoute[];
     /** Distinct model-visible tool names (for the tool-set row). */
     tools: readonly string[];
     /** Section copy. */
@@ -21,5 +21,5 @@ export interface RoleCardProps {
     /** Promote this role to default; returns a localized failure message or undefined. */
     onSetDefault: () => Promise<string | undefined>;
 }
-export declare function RoleCard({ id, role, isDefault, groups, tools, t, onSave, onDelete, onSetDefault }: RoleCardProps): JSX.Element;
+export declare function RoleCard({ id, role, isDefault, routes, tools, t, onSave, onDelete, onSetDefault }: RoleCardProps): JSX.Element;
 //# sourceMappingURL=RoleCard.d.ts.map

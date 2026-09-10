@@ -24,14 +24,18 @@
  *     returns { kind: continuable, subagentId } (the durable child id), which the
  *     parent later follows up on with send_message (M3a / FR-5.3).
  *
- * reasoningEffort: the DSH AgentOptions and SubagentStartRequest shapes do
- * not carry reasoning effort (dsh-agent runtime-types.d.ts, dsh-subagent
- * types.d.ts), so it is surfaced and logged only, never injected (route-resolver
- * already returns it separately for auditability).
+ * reasoningEffort: alpha.4 `AgentOptions` carries `reasoningEffort?:
+ * ReasoningEffortId` (dsh-agent runtime-types), so the resolver injects it
+ * into agentOptions alongside a resolved route (and allows an explicit
+ * effort alone). Provider/model selection is CONSTRAINED to the official
+ * `subagent-model-selection` allowedModels list: the resolver throws for an
+ * unlisted explicit pair and drops unlisted role/default routes, so this
+ * plugin never double-writes a model route the official tool also owns.
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent';
-import { type JsonValue, type ParameterSchemaSpec, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools';
+import { type ParameterSchemaSpec, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools';
+import type { JsonValue } from '@deepseek-ai/dsh-util-values';
 import type { ContentBlock } from '@deepseek-ai/dsh-llm';
 import type { SubagentProvider } from '@deepseek-ai/dsh-subagent';
 import type { DirectorConfig } from './config.js';
@@ -55,7 +59,11 @@ export interface DelegationToolArgs {
     provider?: string;
     /** Model id override (optional). Wins over any role binding. */
     model?: string;
-    /** Reasoning-effort override (optional; advisory — logged, not injected). */
+    /**
+     * Reasoning-effort override (optional). With alpha.4 AgentOptions this is
+     * injected onto the resolved route; may also be supplied alone (provider and
+     * model stay inherited or role-bound).
+     */
     reasoningEffort?: string;
     /**
      * Whether to run in the background. Defaults to false in one-shot mode; in
@@ -75,6 +83,26 @@ export interface DelegationToolArgs {
 export declare function createDelegationParameters(config: Pick<DirectorConfig, 'enableRunInBackground' | 'backgroundMode'>): ParameterSchemaSpec;
 /** The model-facing output schema: exactly one of background, continuable, or foreground. */
 export declare function createDelegationOutputSchema(): ValueSchemaSpec;
+/** The outcome of one execute-time read of the official model selection. */
+export interface ModelSelectionRead {
+    /** Whether a readable `subagent-model-selection` section exists on the seam. */
+    sectionPresent: boolean;
+    /**
+     * The authorized exact routes when the official selection is enabled with a
+     * non-empty allowlist; undefined otherwise (no constraint).
+     */
+    allowedRoutes: Array<{
+        provider: string;
+        model: string;
+    }> | undefined;
+}
+/**
+ * Read the official `subagent-model-selection` section through the settings
+ * seam at execute time (the official dsh-tool-subagent owns this namespace).
+ * `settings.get` throws for namespace values the seam rejects, so the read is
+ * guarded — an unreadable section simply means no authorized list.
+ */
+export declare function readModelSelection(ctx: Context): ModelSelectionRead;
 /** The resolved execution route for one delegation call. */
 export type DelegationRoute = 'foreground' | 'one-shot' | 'continuable';
 /** The mode decision for one delegation: whether to run in the background, and which route to use. */
@@ -136,7 +164,7 @@ export interface SubagentRequestParts {
     description: string;
     prompt: ContentBlock[];
     parent: Agent;
-    agentOptions?: Pick<AgentOptions, 'provider' | 'model'>;
+    agentOptions?: Pick<AgentOptions, 'provider' | 'model' | 'reasoningEffort'>;
     persona?: string;
     toolFilter?: RouteToolFilter;
     maxDepth?: number;
@@ -150,7 +178,7 @@ export declare function buildSubagentRequest<Parts extends SubagentRequestParts>
     label: string;
     prompt: ContentBlock[];
     parent: Agent;
-    agentOptions?: Pick<AgentOptions, "model" | "provider"> | undefined;
+    agentOptions?: Pick<AgentOptions, "model" | "provider" | "reasoningEffort"> | undefined;
     persona?: string | undefined;
     toolFilter?: RouteToolFilter | undefined;
     maxDepth?: number | undefined;

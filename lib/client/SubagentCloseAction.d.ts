@@ -13,8 +13,8 @@
  * released), on failure a short inline error shows the core message.
  *
  * The seat is a list slot declared by ui-conversation; the framework session
- * standard kit supplies `useSession`/`sessionId` (dsh-client-runtime merge),
- * the registration injects the RPC caller.
+ * standard kit supplies `useSession`/`sessionId` (ui-session merge over the
+ * alpha.4 SessionSnapshot), the registration injects the RPC caller.
  */
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';

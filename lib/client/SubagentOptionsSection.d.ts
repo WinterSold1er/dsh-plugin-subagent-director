@@ -1,5 +1,5 @@
 import type { SnapshotSelectorHook } from './bind.js';
-import type { SessionListState } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SubagentDirectorKey } from './locales.js';
 import type { SubagentOptionsState, SubagentOptionsStore } from './store.js';
 /** Injected dependencies of {@link SubagentOptionsSection} (slot `inject`). */
@@ -8,8 +8,6 @@ export interface SubagentOptionsSectionInjected {
     controller: SubagentOptionsStore;
     /** uSES subscription hook bound to the store. */
     useSnapshot: SnapshotSelectorHook<SubagentOptionsState>;
-    /** Wire faces the page writes through (kept for parity with the slot contract). */
-    api: unknown;
     /** Section copy. */
     t: (key: SubagentDirectorKey) => string;
 }

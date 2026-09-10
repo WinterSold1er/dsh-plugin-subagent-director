@@ -40,8 +40,8 @@ export interface DirectorConfig {
    * registered by the base bundle and coexist with this one in the same request
    * tool catalog. Only calls that go through this name apply role persona and
    * role `toolFilter`; a model that picks the built-in `subagent` instead gets
-   * neither (the default model route still applies when `applyDefaultRoute` is
-   * on — see below).
+   * neither (the official dsh-tool-subagent owns model selection for the
+   * built-in tools through its `modelSelectionSettings`).
    */
   toolName?: string;
 
@@ -63,17 +63,6 @@ export interface DirectorConfig {
    * provider's `depthLimit` capability. 'provider-managed' sends no cap.
    */
   maxDepth?: number | 'provider-managed';
-
-  /**
-   * Whether to apply the settings `defaultProvider`/`defaultModel` to every
-   * subagent start that did not carry an explicit agentOptions — including
-   * starts initiated by the built-in `subagent`/`subagent_fork` tools (default
-   * true). With no default model configured this is a no-op (zero intrusion);
-   * set false to keep the defaults limited to `subagent_role`'s resolution
-   * chain.
-   */
-  applyDefaultRoute?: boolean;
-
   /**
    * Model-facing names of the read-only tools the orchestrator may still call
    * while `/orchestrate on` is in effect (context gathering for dispatch
@@ -109,7 +98,6 @@ export const Config = z.object({
   backgroundMode: z.union(['one-shot', 'continuable']).default('one-shot'),
   maxDepth: z
     .union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed')]),
-  applyDefaultRoute: z.boolean().default(true),
   orchestrateReadOnlyTools: z.array(z.string()).default([...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS]),
   orchestrateEnforcement: z.union(['strict', 'lenient']).default('strict'),
 });

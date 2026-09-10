@@ -5,20 +5,20 @@
 <p align="center">
   <img alt="npm version" src="https://img.shields.io/npm/v/dsh-plugin-subagent-director?label=npm">
   <img alt="license" src="https://img.shields.io/npm/l/dsh-plugin-subagent-director">
-  <img alt="DeepSeek Harness" src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.0--rc.6-blue">
+  <img alt="DeepSeek Harness" src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.2--rc.1-blue">
   <img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg">
 </p>
 
-[English](#english) · [特性](#特性) · [快速开始](#快速开始) · [角色模板](#角色模板) · [术语](#术语) · [开发](#开发) · [FAQ](#faq)
+[English](#english) · [特性](#特性) · [官方选择器适配](#与官方子代理选择器的适配) · [快速开始](#快速开始) · [角色模板](#角色模板) · [术语](#术语) · [开发](#开发) · [FAQ](#faq)
 
 ---
 
 ## 特性
 
 - **供应商与模型选择** —— 为 subagent 配置默认 LLM 供应商（route）与模型；每次委派也可以由模型显式指定；
-- **默认模型兜底** —— 配置 `defaultProvider`/`defaultModel` 后，即使模型调用内置
-  `subagent`/`subagent_fork` 工具，未显式指定模型的子代理也会自动使用该模型
-  （`applyDefaultRoute`，默认开启；未配置默认模型时为零侵入空操作）；
+- **受控的模型选择** —— provider/model 只从官方 `subagent-model-selection` 授权列表
+  （`allowedModels`）中选择：显式传入未授权路由为硬错误，角色/默认层未授权路由被
+  丢弃并回退继承（不与官方 dsh-tool-subagent 双重写模型路由）；
 - **配置热更新** —— settings.yaml / 设置面板的改动即时生效，无需重启；
 - **角色按显示名引用** —— `role` 参数未命中 id 时按 `displayName` 精确匹配（重名
   取定义顺序第一个并提示），模型按显示名也能命中模板；
@@ -32,6 +32,22 @@
   （内部调用 DSH 核心 `drainContinuableChildren`）；
 - **可观测性** —— 打开子代理会话时，composer 下方显示其实际运行的供应商/模型
   （从会话 `request/header` 记录读取真实路由；读不到时优雅降级）；
+
+## 与官方子代理选择器的适配
+
+> **兼容性**：v0.5.0 支持 DSH **0.1.2-alpha.4+**，已在当前运行时 **0.1.2-rc.1** 实测（`alpha4-probe` + real-cordis 探针 278/278 通过，实测 alpha.4/alpha.5/0.1.2-rc.1 依赖集）。旧版 DSH（0.1.0-rc.6 及更早）请使用最后兼容的 npm 版本 **0.4.0**。
+
+DSH alpha.4 起，官方内置 subagent 的模型选择收敛到 `subagent-model-selection` 设置段（`allowedModels` 授权列表）。本插件 v0.5.0 完全适配该机制：
+
+- **只从授权列表选择** —— `route-resolver` 把 provider/model 约束在官方
+  `subagent-model-selection.allowedModels` 内：显式传入未授权路由为**硬错误**；
+  插件默认层 / 角色绑定层的未授权路由被**丢弃并回退继承主代理**；
+- **不再双重写模型路由** —— 移除 rc 时代的 `applyDefaultRoute` 补丁缝，插件与
+  官方选择器不会各自覆盖同一条路由（设置面板可选的 provider/model 即官方
+  「插件-插件配置-Subagent池」里的选项）；
+- **客户端半同步移植** —— 移除 rc 时代对 `@deepseek-ai/dsh-client-runtime/client`
+  的全部引用（alpha.4/alpha.5 宿主均不携带该包），dock 读数改读 alpha.4 会话
+  `request/header` 记录，设置页在 alpha.4/alpha.5 宿主均可正常加载。
 
 ## 快速开始
 
@@ -59,7 +75,6 @@ dsh plugin --profile <name> add dsh-plugin-subagent-director
     enableRunInBackground: true
     backgroundMode: one-shot     # one-shot 或 continuable
     maxDepth: 3
-    applyDefaultRoute: true      # 默认 true：把默认模型应用到所有未显式指定模型的子代理
 ```
 
 > 注意：不要再用 `- insert:` 添加这两个条目，否则启动会报
@@ -128,7 +143,8 @@ subagent_role({ role: "code-reviewer", model: "deepseek-chat", prompt: "..." }) 
 > `subagent_role`（工具名由 `toolName` 配置，默认 `subagent_role`）；DSH 基础
 > bundle 另有内置的 `subagent` / `subagent_fork`，两者在同一次请求的工具清单里
 > **并存**。只有走 `subagent_role` 才会应用角色 persona 与 `toolFilter`；模型改用
-> 内置 `subagent` 时这两项不生效（`applyDefaultRoute` 开启时默认模型仍会生效）。
+> 内置 `subagent` 时这两项不生效（模型选择由官方 dsh-tool-subagent 的
+> `modelSelectionSettings` 负责）。
 > 因此需要角色语义时，请在提示里明确要求调用 `subagent_role`。
 
 ### 纯编排模式（`/orchestrate`）
@@ -176,8 +192,9 @@ DSH 的 Web API 只向白名单内的 settings 命名空间开放读写。本插
 
 **未配置任何角色时行为如何？**
 未配置任何角色且未配置默认模型时与未安装本插件完全一致（零侵入）。配置了
-`defaultProvider`/`defaultModel` 且未关闭 `applyDefaultRoute` 时，所有未显式
-指定模型的子代理（含内置工具发起的）都会使用该默认模型。
+`defaultProvider`/`defaultModel` 时：若官方 `subagent-model-selection` 已启用并有
+`allowedModels` 授权列表，默认路由仅在该列表内才生效（否则被丢弃并回退继承）；若
+未配置授权列表，则保留插件默认行为并给出警告提示。
 
 **用过 `/orchestrate` 的会话，卸载插件后还能打开吗？**
 不能。`/orchestrate` 会在会话日志写入 `orchestrate/change` 事件，而宿主的持久化
@@ -207,5 +224,7 @@ DSH 的 Web API 只向白名单内的 settings 命名空间开放读写。本插
 - **Continuable background** — durable subagent ids with send_message follow-ups;
 - **Release continuable children** — a model-facing `close_subagent(subagent_id)` tool plus a "Release subagent" button in the subagent session header, freeing resident children through the core `drainContinuableChildren` API;
 - **Observability** — the addressed subagent’s actual provider/model shown under the composer, read from the session’s `request/header` records (graceful degradation when no run is recorded yet).
+
+**Official subagent selector adaptation (v0.5.0+)** — since DSH alpha.4 the built-in subagent constrains model selection to the official `subagent-model-selection` allowlist (`allowedModels`). v0.5.0 aligns with it: routes are selected only from the allowlist (unauthorized explicit routes hard-fail; unauthorized default/role routes are dropped and fall back to inheritance), the rc-era `applyDefaultRoute` patch seam is removed (no double-writing of model routes with the official selector), and the client half no longer references the rc-era `dsh-client-runtime` package. **Compatibility**: v0.5.0 targets DSH **0.1.2-alpha.4+**, verified on the current runtime **0.1.2-rc.1**; for older DSH releases use npm version **0.4.0**.
 
 **Install** — `dsh plugin --profile <name> add dsh-plugin-subagent-director` mounts the main and bridge entries automatically from the package's bundle patch (`cordis.patch.yml`); optionally override the main entry's config in your profile's cordis.patch.yml (see the Chinese section above). License: MIT.

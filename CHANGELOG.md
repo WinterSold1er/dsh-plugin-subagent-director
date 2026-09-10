@@ -2,6 +2,85 @@
 
 本项目的所有显著变更都会记录在此文件中。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-09-04
+
+### 变更
+
+- **设置页开头说明补充模型选择约束（beta.2）**：`sectionIntro` 增加一行
+  「只能选择插件-插件配置-Subagent池里的提供商-模型」（中英双语），设置页打开
+  即明确可选 provider/model 仅来自官方 Subagent 插件配置的模型池。
+
+### 修复
+
+- **客户端半 alpha.4/alpha.5 兼容性修复（beta.1）**：移除全部 7 处对 rc 时代
+  `@deepseek-ai/dsh-client-runtime/client` 的引用（该包 npm 最新仅 0.1.1-rc.2，
+  alpha.4/alpha.5 宿主均不携带，客户端 bundle 的运行时 `require` 在浏览器加载即
+  失败，设置页/模型读数/关闭按钮整体不可用）：
+  - `createSnapshotStore`/`SnapshotStore` 改从 `@deepseek-ai/dsh-client-store`
+    导入（alpha 运行时，宿主 web bundle 虚拟模块）；
+  - `ClientContext` 改为 cordis `Context`（官方 alpha 客户端模式），`ctx.slots` /
+    `ctx.remote` / `ctx.uiConversation` 等 Context 增强经 `dsh-client-ui-renderer` /
+    `dsh-api-remotes` / `dsh-client-ui-conversation` 的类型导入引入；
+  - 会话类型改从 alpha 包导入：`SessionSnapshot`（`dsh-api-session-controller`）、
+    `ConversationNode`/`AssistantMessageNode`/`AssistantProvenanceView`
+    （`dsh-client-ui-conversation`）、`ChatSnapshot`（`dsh-client-ui-chat`）、
+    `SessionListState`（`dsh-api-session-controller`）；
+  - **composer.dock 读数适配 alpha.4 会话架构**：dock 槽位不再经 owner props 提供
+    session（渲染时传空 `{}`），改为消费框架标准会话套件（`useSession`/`sessionId`），
+    转录节点改从当前会话 chat 视图快照的 `legacy.nodes` 读取（`uiConversation`
+    绑定 → `chat` target，惰性解析，设置页不依赖会话 UI）；RPC 兜底查询保留；
+  - 移除过时的 `conversation.composer.dock` / `conversation.session.header.actions`
+    SlotMap 增强（alpha.4 由 ui-conversation 声明，重复声明会类型冲突）；
+  - `package.json` peer/dev 依赖移除 `dsh-client-runtime`，新增
+    `dsh-client-store`、`dsh-client-ui-conversation`、`dsh-client-ui-chat`、
+    `dsh-api-session-controller`、`dsh-client-ui-session`、`dsh-client-ui-renderer`、
+    `dsh-api-remotes`（均 `^0.1.2-alpha.4`，同时覆盖 alpha.4/alpha.5 宿主）。
+
+### 测试
+
+- 新增 `client-compat.test.ts` 兼容性守卫：扫描 `src/client` 与 `package.json`，
+  任何 `dsh-client-runtime` 残留引用即失败（本次 bug 的回归测试）；
+- `subagent-model.test.ts` 更新为 alpha.4 形状（`SessionSnapshot.subagent` 地址、
+  chat 视图 legacy 节点切片、`SubagentAddress` 的 continuable/one-shot 判别）；
+- 新增 `client-apply-probe.test.ts` 真实 cordis 探针：客户端半在 alpha.4 形状
+  服务（slots/locale/remote/connection）上挂载，设置页/dock/关闭按钮均注册，
+  dock 注入面携带 `useChatSnapshot`，且设置页不依赖 `uiConversation` 存在。
+
+### 变更
+
+- **alpha.4 兼容性移植（Host 半）**：`dsh-settings` 服务 API 升级——移除的
+  `settingsNamespace()` / `installSettingsSection()` 改为普通 kebab-case 命名空间
+  字面量 + `ctx.settings.installSection(owner, ns, schema, entry, hooks)`（与官方
+  `subagent-model-selection` 消费方同款模式）；`JsonValue` 改从
+  `@deepseek-ai/dsh-util-values` 导入（`dsh-tools` 不再导出）；`AgentOptions` 现携带
+  `reasoningEffort?: ReasoningEffortId`，`reasoningEffort` 由「仅告知」改为正式注入
+  `agentOptions`（可单独提供，路由变更时清除继承的 route 专属 effort）；
+- **移除 `applyDefaultRoute` 默认路由补丁缝**（避免与官方 dsh-tool-subagent 双重写
+  模型路由）：删除 `src/default-route.ts` 及其对 `ctx.subagents.start/startContinuable`
+  的 monkey-patch，`DirectorConfig` 与 Config schema 同步移除 `applyDefaultRoute`；
+  插件不再向任何子代理启动注入默认模型；
+- **选择收敛到官方授权列表**：`resolveRoute` 新增 `allowedRoutes` 约束——显式
+  provider/model 必须成对且位于 `subagent-model-selection.allowedModels`（未授权为
+  `subagent-director:` 硬错误）；角色/默认层未授权路由被丢弃（回退继承）并告警，
+  角色 persona/toolFilter 仍生效；新增 `isRouteAllowed` 纯函数与
+  `readModelSelection`（执行期经 `settings.get` 读取官方命名空间，缺失/异常时优雅
+  降级为无约束并提示未配置授权列表）。
+
+### 测试
+
+- `route-resolver.test.ts` 新增授权列表约束与 effort 注入用例（36 项）；
+- 新增 `alpha4-probe.test.ts` 真实 cordis 探针：a) 插件挂载不包装
+  `ctx.subagents.start`（证明补丁缝已移除）；b) `subagent-director` 命名空间经
+  `installSection` 注册且委派解析读取 `subagent-model-selection`；c) 委派执行路径对
+  未授权显式路由拒绝、对授权路由把 `agentOptions`（含 effort）透传给
+  `subagents.start`；删除 `default-route.test.ts`。
+
+### 兼容性
+
+- 桥接契约（`SUBAGENT_DIRECTOR_RPC_VIEW` / `_MUTATE` / `_CLOSE` / `_MODEL` / `_TOOLS`
+  端点与载荷）不变；`installDirectorSettings` 等导出签名保持；`RpcError.sessionId`
+  品牌冲突（宿主 apiproxy 嵌套的 `dsh-session` 副本）在边界处收敛为最小转型。
+
 ## [0.4.0] - 2026-08-31
 
 ### 新增
