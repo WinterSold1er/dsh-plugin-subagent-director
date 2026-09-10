@@ -4,3 +4,10 @@ node_modules/
 .DS_Store
 coverage/
 .npm-cache/
+
+# IDE and tool directories
+.vscode/
+.cursor/
+.codex/
+.claude/
+.dsh/
