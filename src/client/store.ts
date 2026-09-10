@@ -34,9 +34,11 @@ import {
   removeRoleOps,
   restoreDefaultsOps,
   enforcementOps,
+  interceptSwitchesOps,
   setDefaultRoleOps,
   updateRoleOps,
   type DefaultModelEdits,
+  type InterceptSwitchesEdits,
   type MutationErrorKind,
   type RoleDraft,
   type StoredRole,
@@ -325,6 +327,12 @@ export class SubagentOptionsStore {
   async setEnforcement(next: OrchestrateEnforcement): Promise<string | undefined> {
     const state = this.store.getSnapshot();
     const result = await this.mutate(enforcementOps(state.section ?? {}, next));
+    return result.ok ? undefined : result.message;
+  }
+
+  async setInterceptSwitches(edits: InterceptSwitchesEdits): Promise<string | undefined> {
+    const state = this.store.getSnapshot();
+    const result = await this.mutate(interceptSwitchesOps(state.section ?? {}, edits));
     return result.ok ? undefined : result.message;
   }
 }

@@ -86,8 +86,13 @@ export interface DirectorConfig {
    * prompt-only and the injected prompt says so honestly (no false ENFORCED
    * claim). Choose lenient when per-turn orchestration must not risk blocking
    * legitimate work; sticky mode is then the only hard boundary.
+   * 'none': no tool-level enforcement (prompt-only).
    */
   orchestrateEnforcement?: OrchestrateEnforcement;
+  /** Master switch: whether to intercept tool calls in orchestrate mode. Default true. */
+  orchestrateInterceptTools?: boolean;
+  /** Cascade switch: whether per-turn orchestrate mode intercepts tool calls. Default true. */
+  orchestrateRoundIntercept?: boolean;
 }
 
 /** Schemastery schema for {@link DirectorConfig}. */
@@ -99,5 +104,7 @@ export const Config = z.object({
   maxDepth: z
     .union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed')]),
   orchestrateReadOnlyTools: z.array(z.string()).default([...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS]),
-  orchestrateEnforcement: z.union(['strict', 'lenient']).default('strict'),
+  orchestrateEnforcement: z.union(['strict', 'lenient', 'none']),
+  orchestrateInterceptTools: z.boolean(),
+  orchestrateRoundIntercept: z.boolean(),
 });

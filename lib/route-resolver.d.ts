@@ -88,11 +88,22 @@ export interface SubagentDirectorSettings {
      * Orchestrate-mode tool-level enforcement (design: strict default).
      * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
      * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
-     * stays prompt-only. This is a USER-SETTING override of the plugin's mount
+     * stays prompt-only; 'none' = no tool interception.
+     * This is a USER-SETTING override of the plugin's mount
      * config (DirectorConfig.orchestrateEnforcement); when absent the mount
      * config default applies, and that ultimately defaults to 'strict'.
      */
     orchestrateEnforcement?: OrchestrateEnforcement;
+    /**
+     * Master switch: whether to intercept tool calls in orchestrate mode.
+     * Default: true.
+     */
+    orchestrateInterceptTools?: boolean;
+    /**
+     * Cascade switch: whether per-turn orchestrate mode intercepts tool calls.
+     * Default: false.
+     */
+    orchestrateRoundIntercept?: boolean;
 }
 /** Explicit per-call arguments accepted by the subagent_role tool. */
 export interface RouteCallArgs {

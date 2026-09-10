@@ -85,9 +85,10 @@ import { detectPerTurnOrchestrate, resolveOrchestrateMode } from './orchestrate.
  * Orchestrate guard enforcement level, mirroring DirectorConfig.
  * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
  * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
- * stays prompt-level (prompt wording reflects this honestly).
+ * stays prompt-level (prompt wording reflects this honestly);
+ * 'none' = no tool-level enforcement (all tool calls allowed through).
  */
-export type OrchestrateEnforcement = 'strict' | 'lenient';
+export type OrchestrateEnforcement = 'strict' | 'lenient' | 'none';
 
 /**
  * Default read-only tool surface of the DSH host (fs/shell/interaction
@@ -474,6 +475,9 @@ export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuar
     if (origin === 'subagent' || delegationDepth > 0) return undefined;
 
     const enforcement = deps.getEnforcement?.() ?? deps.enforcement ?? 'strict';
+    // 'none' disables all tool-level interception (pure prompt-only mode)
+    if (enforcement === 'none') return undefined;
+
     // Per-turn orchestration tool-level block (controlled by enforcement setting:
     // strict blocks write/execute tools; lenient skips per-turn tool blocking).
     if (enforcement === 'strict' && detectPerTurnOrchestrate(agent.session) === 'on') {

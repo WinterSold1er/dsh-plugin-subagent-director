@@ -28,6 +28,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client';
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-api-remotes/client';
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client';
+import { IconBranchOutline16 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { bindSnapshotSelector } from './bind.js';
 import { en, zh, type SubagentDirectorKey } from './locales.js';
 import { SubagentOptionsStore, type SubagentOptionsState } from './store.js';
@@ -35,6 +36,7 @@ import type { SubagentOptionsSectionInjected } from './SubagentOptionsSection.js
 import { SubagentOptionsSection } from './SubagentOptionsSection.js';
 import { SubagentModelDock, type SubagentModelDockInjected } from './SubagentModelDock.js';
 import { SubagentCloseAction, type SubagentCloseActionInjected } from './SubagentCloseAction.js';
+import { SubagentOrchestrateButton, type SubagentOrchestrateButtonInjected } from './SubagentOrchestrateButton.js';
 
 /** Dictionary namespace owned by Subagent Director (bilingual, typed). */
 export const NS = 'settings.subagentDirector';
@@ -58,7 +60,7 @@ export function refreshIfLoaded(controller: SubagentOptionsStore): void {
 }
 
 /** Services required by the settings registration (cordis fiber inject). */
-export const inject = ['slots', 'locale', 'connection', 'remote'];
+export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.commands'];
 
 /**
  * Register the Subagent Director section once the `settings.section`
@@ -118,6 +120,17 @@ export function apply(ctx: ClientContext): void {
 
   const dockInjected = (): SubagentModelDockInjected => ({ rpc: connection.rpc, useChatSnapshot });
   const closeInjected = (): SubagentCloseActionInjected => ({ rpc: connection.rpc });
+  const orchestrateToggleInjected = (sessionId: SessionId): SubagentOrchestrateButtonInjected => ({
+    executeCommand: async (sid: string, commandLine: string) => {
+      const commands = (ctx.get('remote') as any)?.commands ?? (ctx as any).remote?.commands;
+      if (commands && typeof commands.execute === 'function') {
+        const result = await commands.execute(sid, commandLine, []);
+        if (!result.ok) return result.error?.message ?? 'Command execution failed';
+        return null;
+      }
+      return 'commands service unavailable';
+    },
+  });
 
   ctx.effect(() => {
     const refresh = (): void => refreshIfLoaded(controller);
@@ -138,6 +151,7 @@ export function apply(ctx: ClientContext): void {
         id: 'subagent-director',
         order: 20,
         label: (): string => t('nav'),
+        icon: IconBranchOutline16,
         locale: NS,
         inject: injected,
       },
@@ -168,6 +182,19 @@ export function apply(ctx: ClientContext): void {
         inject: closeInjected,
       },
       SubagentCloseAction,
+    ),
+  );
+
+  ctx.slots.inject('conversation.input.left', () =>
+    ctx.slots.register(
+      {
+        name: 'conversation.input.left',
+        id: 'subagent-director-orchestrate',
+        order: 10,
+        locale: NS,
+        inject: orchestrateToggleInjected,
+      },
+      SubagentOrchestrateButton,
     ),
   );
 }

@@ -30,6 +30,21 @@ import type {
 } from '@deepseek-ai/dsh-settings';
 
 import type { RoleTemplate, SubagentDirectorSettings } from './route-resolver.js';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
+import {
+  type EnforcementConfigInput,
+  resolveEnforcementLevel,
+  resolveLayeredEnforcement,
+  deriveSwitchesFromEnforcement,
+} from './enforcement.js';
+
+export type { OrchestrateEnforcement } from './orchestrate-guard.js';
+export {
+  type EnforcementConfigInput,
+  resolveEnforcementLevel,
+  resolveLayeredEnforcement,
+  deriveSwitchesFromEnforcement,
+};
 
 const toSettingsNamespace = (value: string): SettingsNamespace => {
   const fn = (dshSettings as any).settingsNamespace;
@@ -126,7 +141,9 @@ export const SettingsSchema: Schemastery = z.object({
   // entry resolves strict-at-the-bottom (see index.ts). A default here would
   // mask whether the user ever set it and is unnecessary for the strict
   // baseline. schemastery coerces the string to the allowed union at write time.
-  orchestrateEnforcement: z.union(['strict', 'lenient']),
+  orchestrateEnforcement: z.union(['strict', 'lenient', 'none']),
+  orchestrateInterceptTools: z.boolean(),
+  orchestrateRoundIntercept: z.boolean(),
 });
 
 function isEmpty(value: string | undefined | null): boolean {

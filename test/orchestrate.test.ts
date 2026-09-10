@@ -96,8 +96,20 @@ describe('buildOrchestratorFrame', () => {
     expect(text).toMatch(/ENFORCED at the tool level/);
   });
 
+  it('none frame honestly states tool interception is disabled', () => {
+    const text = buildOrchestratorFrame('dispatch', 'none');
+    expect(text).not.toMatch(/ENFORCED at the tool level/);
+    expect(text).toContain('Tool interception is disabled in current settings; strictly follow delegation rules at prompt level.');
+  });
+
   it('buildOrchestratorFrame defaults to strict', () => {
     expect(buildOrchestratorFrame('dispatch')).toMatch(/ENFORCED at the tool level:/);
+  });
+
+  it('renderOrchestratorPrompt threads none enforcement into the frame', () => {
+    const prompt = renderOrchestratorPrompt(settings, 'subagent_role', 'none');
+    expect(prompt).not.toMatch(/ENFORCED at the tool level:/);
+    expect(prompt).toContain('Tool interception is disabled in current settings; strictly follow delegation rules at prompt level.');
   });
 
   it('renderOrchestratorPrompt threads the enforcement into the frame', () => {

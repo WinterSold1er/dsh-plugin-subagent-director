@@ -17,7 +17,7 @@ import type { SettingsNamespaceView } from '@deepseek-ai/dsh-host-apiproxy/api';
 import { type DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
-import { type DefaultModelEdits, type MutationErrorKind, type RoleDraft, type StoredRole, type StoredSection, type OrchestrateEnforcement } from './store-logic.js';
+import { type DefaultModelEdits, type InterceptSwitchesEdits, type MutationErrorKind, type RoleDraft, type StoredRole, type StoredSection, type OrchestrateEnforcement } from './store-logic.js';
 /** The settings namespace this page reads and writes. */
 export declare const SUBAGENT_DIRECTOR_NS = "subagent-director";
 /** Page snapshot rendered by the section component. */
@@ -105,6 +105,7 @@ export declare class SubagentOptionsStore {
     setDefaultModel(edits: DefaultModelEdits): Promise<string | undefined>;
     restoreDefaults(): Promise<string | undefined>;
     setEnforcement(next: OrchestrateEnforcement): Promise<string | undefined>;
+    setInterceptSwitches(edits: InterceptSwitchesEdits): Promise<string | undefined>;
 }
 /** Outcome of one write so the UI can pick the right message. */
 export interface MutationOutcome {

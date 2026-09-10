@@ -23,6 +23,7 @@
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
     "test": "vitest run",
+    "test:e2e": "node scripts/verify-web-e2e.cjs",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
@@ -49,7 +50,8 @@
         "slots",
         "locale",
         "connection",
-        "remote"
+        "remote",
+        "remote.commands"
       ],
       "platform": "web"
     }
@@ -85,6 +87,7 @@
     "@deepseek-ai/dsh-client-store": "^0.1.2-alpha.4",
     "@deepseek-ai/dsh-client-ui-chat": "^0.1.2-alpha.4",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-alpha.4",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-alpha.4",
     "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-alpha.4",
     "@deepseek-ai/dsh-client-ui-session": "^0.1.2-alpha.4",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.2-alpha.4",

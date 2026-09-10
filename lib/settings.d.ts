@@ -25,6 +25,9 @@ import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import type { SettingsNamespace, SettingsSectionHooks } from '@deepseek-ai/dsh-settings';
 import type { SubagentDirectorSettings } from './route-resolver.js';
+import { type EnforcementConfigInput, resolveEnforcementLevel, resolveLayeredEnforcement, deriveSwitchesFromEnforcement } from './enforcement.js';
+export type { OrchestrateEnforcement } from './orchestrate-guard.js';
+export { type EnforcementConfigInput, resolveEnforcementLevel, resolveLayeredEnforcement, deriveSwitchesFromEnforcement, };
 /** Settings namespace for Subagent Director (design section 0 naming resolution). */
 export declare const SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE: SettingsNamespace;
 export type { RoleTemplate, SubagentDirectorSettings } from './route-resolver.js';

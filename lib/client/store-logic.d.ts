@@ -52,6 +52,10 @@ export interface StoredSection {
     roles?: Record<string, StoredRole>;
     /** Orchestrate-mode tool-level enforcement (user setting). Absent ⇒ mount default. */
     orchestrateEnforcement?: OrchestrateEnforcement;
+    /** Whether to intercept tool calls in orchestrate mode (master switch). */
+    orchestrateInterceptTools?: boolean;
+    /** Whether per-turn orchestrate mode intercepts tool calls (cascade switch). */
+    orchestrateRoundIntercept?: boolean;
 }
 /** Path of the roles map from the section root. */
 export declare const ROLES_PATH: readonly ['roles'];
@@ -99,8 +103,14 @@ export interface DefaultModelEdits {
 export declare function defaultModelOps(before: StoredSection, edits: DefaultModelEdits): SettingsPathOpView[];
 /** Ops to clear every default-model field and the defaultRole back to composition defaults. */
 export declare function restoreDefaultsOps(current: StoredSection): SettingsPathOpView[];
-/** Ops to set the orchestrate enforcement level ('strict' | 'lenient'). */
+/** Ops to set the orchestrate enforcement level ('strict' | 'lenient' | 'none'). */
 export declare function enforcementOps(before: StoredSection, next: OrchestrateEnforcement): SettingsPathOpView[];
+export interface InterceptSwitchesEdits {
+    orchestrateInterceptTools?: boolean;
+    orchestrateRoundIntercept?: boolean;
+}
+/** Ops to update orchestrate tool intercept switches, keeping orchestrateEnforcement in sync. */
+export declare function interceptSwitchesOps(before: StoredSection, edits: InterceptSwitchesEdits): SettingsPathOpView[];
 /** Whether a section's defaultRole references a role that currently exists. */
 export declare function defaultRoleValid(section: StoredSection): boolean;
 /** Classification of a settings.mutate failure for the UI's conflict handling. */

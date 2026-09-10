@@ -78,12 +78,13 @@ function loadClient(ctx: Context, slots: ReturnType<typeof slotsStub>, locale: R
   ctx.provide('slots', slots);
   ctx.provide('locale', locale);
   ctx.provide('remote', remote);
+  ctx.provide('remote.commands', { execute: async () => ({ ok: true, value: {} }) });
   ctx.provide('connection', connection);
   void ctx.plugin({ name: pluginName, inject: pluginInject, apply }, {});
 }
 
 describe('real cordis probe — client half mounts on alpha.4-shaped services', () => {
-  it('registers the settings section, the composer dock, and the header close action', async () => {
+  it('registers the settings section, the composer dock, the header close action, and the input left button', async () => {
     const ctx = new Context();
     const slots = slotsStub();
     const locale = localeStub();
@@ -96,10 +97,20 @@ describe('real cordis probe — client half mounts on alpha.4-shaped services', 
     expect(names).toContain('settings.section');
     expect(names).toContain('conversation.composer.dock');
     expect(names).toContain('conversation.session.header.actions');
+    expect(names).toContain('conversation.input.left');
     expect(locale.namespaces).toContain('settings.subagentDirector');
     expect(remote.topics).toEqual(
       expect.arrayContaining(['settings/document-updated', 'llm/adapters-updated']),
     );
+
+    const section = slots.registrations.find((r) => r.name === 'settings.section');
+    expect(section).toBeDefined();
+    expect((section as any).icon).toBeDefined();
+
+    const inputBtn = slots.registrations.find((r) => r.name === 'conversation.input.left');
+    expect(inputBtn).toBeDefined();
+    const injected = (inputBtn!.inject as any)('s1') as { executeCommand?: unknown };
+    expect(typeof injected.executeCommand).toBe('function');
   });
 
   it('injects the alpha.4 chat-snapshot hook into the dock entry', async () => {

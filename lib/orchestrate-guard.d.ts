@@ -81,9 +81,10 @@ import type { ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools';
  * Orchestrate guard enforcement level, mirroring DirectorConfig.
  * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
  * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
- * stays prompt-level (prompt wording reflects this honestly).
+ * stays prompt-level (prompt wording reflects this honestly);
+ * 'none' = no tool-level enforcement (all tool calls allowed through).
  */
-export type OrchestrateEnforcement = 'strict' | 'lenient';
+export type OrchestrateEnforcement = 'strict' | 'lenient' | 'none';
 /**
  * Default read-only tool surface of the DSH host (fs/shell/interaction
  * packages). `ls`/`find` are included for host builds or MCP servers that
