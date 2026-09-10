@@ -151,7 +151,8 @@ export function apply(ctx: ClientContext): void {
         id: 'subagent-director',
         order: 20,
         label: (): string => t('nav'),
-        icon: IconBranchOutline16,
+        // Forward icon to host settings navigation while avoiding type collision with npm-published dsh-client-ui-settings
+        ...({ icon: IconBranchOutline16 } as Record<string, unknown>),
         locale: NS,
         inject: injected,
       },
