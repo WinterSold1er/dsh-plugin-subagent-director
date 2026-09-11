@@ -4,3 +4,21 @@ lib/
 .DS_Store
 coverage/
 .npm-cache/
+e2e-screenshots/
+
+# IDE and editor configurations
+.vscode/
+.cursor/
+.codex/
+.claude/
+.dsh/
+
+# Local configuration and environment files
+.mcp.json
+.npmrc
+CLAUDE.md
+.vectrignore
+*.local
+*.local.*
+pnpm-lock.yaml
+
