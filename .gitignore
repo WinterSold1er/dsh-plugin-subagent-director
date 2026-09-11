@@ -15,7 +15,6 @@ e2e-screenshots/
 
 # Local configuration and environment files
 .mcp.json
-.npmrc
 CLAUDE.md
 .vectrignore
 *.local
