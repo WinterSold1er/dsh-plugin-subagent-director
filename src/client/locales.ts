@@ -78,7 +78,26 @@ export type SubagentDirectorKey =
   | 'closingContinuable'
   | 'closedSubagent'
   | 'confirmCloseContinuable'
-  | 'closeFailed';
+  | 'closeFailed'
+  | 'enforcementHeading'
+  | 'enforcementHint'
+  | 'enforcementStrict'
+  | 'enforcementLenient'
+  | 'enforcementStrictDesc'
+  | 'enforcementLenientDesc'
+  | 'enforcementToggleOn'
+  | 'enforcementToggleOff'
+  | 'interceptCardHeading'
+  | 'interceptCardHint'
+  | 'interceptToolsLabel'
+  | 'interceptToolsHint'
+  | 'interceptRoundLabel'
+  | 'interceptRoundHint'
+  | 'interceptYes'
+  | 'interceptNo'
+  | 'useSubagents'
+  | 'useSubagentsActiveTitle'
+  | 'useSubagentsInactiveTitle';
 
 /** English dictionary ($subagentDirector). */
 export const en: Record<SubagentDirectorKey, string> = {
@@ -153,7 +172,26 @@ export const en: Record<SubagentDirectorKey, string> = {
   "closingContinuable": "Releasing…",
   "closedSubagent": "Released",
   "confirmCloseContinuable": "Release continuable subagent “{id}”? It will stop being resident; you can no longer continue it with send_message.",
-  "closeFailed": "Release failed: {message}"
+  "closeFailed": "Release failed: {message}",
+  "enforcementHeading": "Per-turn tool intercept",
+  "enforcementHint": "When enabled, per-turn orchestration intercepts write and execution tool calls; when disabled, it is prompt-only.",
+  "enforcementStrict": "Strict (intercept)",
+  "enforcementLenient": "Lenient (no intercept)",
+  "enforcementStrictDesc": "Per-turn tool intercept: Enabled (blocks write/execute tools)",
+  "enforcementLenientDesc": "Per-turn tool intercept: Disabled (prompt-only)",
+  "enforcementToggleOn": "Per-turn tool intercept: Enabled",
+  "enforcementToggleOff": "Per-turn tool intercept: Disabled",
+  "interceptCardHeading": "Orchestration Tool Intercept",
+  "interceptCardHint": "Control whether to block write and execution tools in orchestrate mode, requiring the main agent to delegate work to subagents.",
+  "interceptToolsLabel": "Intercept tool calls",
+  "interceptToolsHint": "When enabled, disallows the main agent from running write and execution tools directly.",
+  "interceptRoundLabel": "Per-turn orchestration tool intercept",
+  "interceptRoundHint": "When enabled, per-turn orchestration (e.g. using /orchestrate or natural language) also intercepts write and execution tools; when disabled, per-turn is prompt-only.",
+  "interceptYes": "Yes",
+  "interceptNo": "No",
+  "useSubagents": "Use Subagents",
+  "useSubagentsActiveTitle": "Use Subagents (Orchestrator Mode) is active: only allows subagent delegation and intercepts direct tool calls. Click to turn off (/orchestrate off)",
+  "useSubagentsInactiveTitle": "Use Subagents (Orchestrator Mode): only allows subagent delegation and intercepts direct tool calls. Click to turn on (/orchestrate)"
 };
 
 /** Chinese dictionary. */
@@ -229,5 +267,24 @@ export const zh: Record<SubagentDirectorKey, string> = {
   "closingContinuable": "正在终止…",
   "closedSubagent": "已终止",
   "confirmCloseContinuable": "终止可持续子代理“{id}”？终止后将不再驻留，无法再用 send_message 继续它。",
-  "closeFailed": "终止失败：{message}"
+  "closeFailed": "终止失败：{message}",
+  "enforcementHeading": "按轮编排工具拦截",
+  "enforcementHint": "开启时，按轮编排在工具层拦截写与执行类工具；关闭时仅作提示（不拦截）。",
+  "enforcementStrict": "严格 (拦截)",
+  "enforcementLenient": "宽松 (不拦截)",
+  "enforcementStrictDesc": "按轮编排拦截工具调用：已开启（拦截写/执行工具）",
+  "enforcementLenientDesc": "按轮编排拦截工具调用：已关闭（仅提示）",
+  "enforcementToggleOn": "按轮编排拦截工具调用：已开启",
+  "enforcementToggleOff": "按轮编排拦截工具调用：已关闭",
+  "interceptCardHeading": "编排工具拦截",
+  "interceptCardHint": "控制纯编排模式下是否在工具层面拦截写和执行类工具调用，强制主代理委派工作给子代理。",
+  "interceptToolsLabel": "拦截工具调用",
+  "interceptToolsHint": "开启后，在编排模式下禁止主代理直接调用写和执行类工具。",
+  "interceptRoundLabel": "按轮编排拦截工具调用",
+  "interceptRoundHint": "开启后，按轮编排（如输入框声明或快捷按钮）同样拦截写和执行工具；关闭后按轮编排仅作提示（不拦截）。",
+  "interceptYes": "是",
+  "interceptNo": "否",
+  "useSubagents": "使用子代理",
+  "useSubagentsActiveTitle": "使用子代理（编排模式）已激活：仅允许调度子代理，拦截直接工具调用。点击关闭（/orchestrate off）",
+  "useSubagentsInactiveTitle": "使用子代理（编排模式）：仅允许调度子代理，拦截直接工具调用。点击开启（/orchestrate）"
 };

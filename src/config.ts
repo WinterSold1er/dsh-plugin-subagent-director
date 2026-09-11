@@ -15,6 +15,9 @@
  */
 import z from '@deepseek-ai/schemastery';
 
+import { ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS } from './orchestrate-guard.js';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
+
 /**
  * Cordis-layer plugin configuration.
  *
@@ -60,6 +63,36 @@ export interface DirectorConfig {
    * provider's `depthLimit` capability. 'provider-managed' sends no cap.
    */
   maxDepth?: number | 'provider-managed';
+  /**
+   * Model-facing names of the read-only tools the orchestrator may still call
+   * while `/orchestrate on` is in effect (context gathering for dispatch
+   * decisions). Everything NOT in this list and not a dispatch/interaction
+   * tool is blocked for the main agent in that mode (fail-closed allow-list;
+   * see src/orchestrate-guard.ts for the full policy). Defaults to the DSH
+   * host read-only surface. Extend it for host builds or MCP servers that
+   * expose additional read-only tools; never list a tool that writes, edits,
+   * or executes.
+   */
+  orchestrateReadOnlyTools?: readonly string[];
+
+  /**
+   * Tool-level enforcement strictness for orchestrate mode (default 'strict').
+   * 'strict': while orchestrate is in effect — sticky (/orchestrate on until
+   * off) OR per-turn (使用orchestrate模式 / /orchestrate <task> this turn) —
+   * the main agent is held to the fail-closed allow-list above and every
+   * write/execute tool call is blocked (the injected prompt says ENFORCED at
+   * the tool level, which is then true). 'lenient': tool-level enforcement
+   * covers ONLY the sticky projection; per-turn orchestration stays
+   * prompt-only and the injected prompt says so honestly (no false ENFORCED
+   * claim). Choose lenient when per-turn orchestration must not risk blocking
+   * legitimate work; sticky mode is then the only hard boundary.
+   * 'none': no tool-level enforcement (prompt-only).
+   */
+  orchestrateEnforcement?: OrchestrateEnforcement;
+  /** Master switch: whether to intercept tool calls in orchestrate mode. Default true. */
+  orchestrateInterceptTools?: boolean;
+  /** Cascade switch: whether per-turn orchestrate mode intercepts tool calls. Default true. */
+  orchestrateRoundIntercept?: boolean;
 }
 
 /** Schemastery schema for {@link DirectorConfig}. */
@@ -70,4 +103,8 @@ export const Config = z.object({
   backgroundMode: z.union(['one-shot', 'continuable']).default('one-shot'),
   maxDepth: z
     .union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed')]),
+  orchestrateReadOnlyTools: z.array(z.string()).default([...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS]),
+  orchestrateEnforcement: z.union(['strict', 'lenient', 'none']),
+  orchestrateInterceptTools: z.boolean(),
+  orchestrateRoundIntercept: z.boolean(),
 });

@@ -13,6 +13,9 @@
  *   }
  */
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import type { OrchestrateEnforcement } from '../orchestrate-guard.js';
+import { deriveSwitchesFromEnforcement, resolveEnforcementLevel } from '../enforcement.js';
+export type { OrchestrateEnforcement } from '../orchestrate-guard.js';
 
 /** One role as the user edits it in a card (empty string = "clear the field"). */
 export interface RoleDraft {
@@ -45,6 +48,12 @@ export interface StoredSection {
   defaultRole?: string;
   fallbackOnInvalid?: boolean;
   roles?: Record<string, StoredRole>;
+  /** Orchestrate-mode tool-level enforcement (user setting). Absent ⇒ mount default. */
+  orchestrateEnforcement?: OrchestrateEnforcement;
+  /** Whether to intercept tool calls in orchestrate mode (master switch). */
+  orchestrateInterceptTools?: boolean;
+  /** Whether per-turn orchestrate mode intercepts tool calls (cascade switch). */
+  orchestrateRoundIntercept?: boolean;
 }
 
 /** Path of the roles map from the section root. */
@@ -342,6 +351,60 @@ export function restoreDefaultsOps(current: StoredSection): SettingsPathOpView[]
   if (current.defaultModel !== undefined) ops.push({ op: 'unset', path: ['defaultModel'] } as SettingsPathOpView);
   if (current.defaultReasoningEffort !== undefined) ops.push({ op: 'unset', path: ['defaultReasoningEffort'] } as SettingsPathOpView);
   if (current.defaultRole !== undefined) ops.push({ op: 'unset', path: ['defaultRole'] } as SettingsPathOpView);
+  return ops;
+}
+
+/** Ops to set the orchestrate enforcement level ('strict' | 'lenient' | 'none'). */
+export function enforcementOps(before: StoredSection, next: OrchestrateEnforcement): SettingsPathOpView[] {
+  if (before.orchestrateEnforcement === next) return [];
+  return [{ op: 'set', path: ['orchestrateEnforcement'], value: next } as SettingsPathOpView];
+}
+
+export interface InterceptSwitchesEdits {
+  orchestrateInterceptTools?: boolean;
+  orchestrateRoundIntercept?: boolean;
+}
+
+/** Ops to update orchestrate tool intercept switches, keeping orchestrateEnforcement in sync. */
+export function interceptSwitchesOps(before: StoredSection, edits: InterceptSwitchesEdits): SettingsPathOpView[] {
+  const ops: SettingsPathOpView[] = [];
+  const fallback = deriveSwitchesFromEnforcement(resolveEnforcementLevel(before));
+  const nextIntercept = edits.orchestrateInterceptTools !== undefined
+    ? edits.orchestrateInterceptTools
+    : (before.orchestrateInterceptTools ?? fallback.orchestrateInterceptTools);
+
+  if (before.orchestrateInterceptTools !== nextIntercept) {
+    ops.push({ op: 'set', path: ['orchestrateInterceptTools'], value: nextIntercept } as SettingsPathOpView);
+  }
+
+  // When edits.orchestrateInterceptTools === false and edits.orchestrateRoundIntercept is undefined,
+  // do NOT write roundIntercept: false or touch orchestrateRoundIntercept, to avoid poisoning historical settings.
+  const roundInterceptEdited = edits.orchestrateRoundIntercept !== undefined;
+  const isDisablingInterceptOnly = edits.orchestrateInterceptTools === false && !roundInterceptEdited;
+
+  let nextRound: boolean | undefined;
+  if (roundInterceptEdited) {
+    nextRound = edits.orchestrateRoundIntercept;
+    if (before.orchestrateRoundIntercept !== nextRound) {
+      ops.push({ op: 'set', path: ['orchestrateRoundIntercept'], value: nextRound } as SettingsPathOpView);
+    }
+  } else if (isDisablingInterceptOnly) {
+    nextRound = before.orchestrateRoundIntercept;
+  } else {
+    nextRound = before.orchestrateRoundIntercept ?? fallback.orchestrateRoundIntercept;
+    if (before.orchestrateRoundIntercept !== nextRound) {
+      ops.push({ op: 'set', path: ['orchestrateRoundIntercept'], value: nextRound } as SettingsPathOpView);
+    }
+  }
+
+  const nextEnforcement = resolveEnforcementLevel({
+    orchestrateInterceptTools: nextIntercept,
+    orchestrateRoundIntercept: nextRound,
+  });
+  if (before.orchestrateEnforcement !== nextEnforcement) {
+    ops.push({ op: 'set', path: ['orchestrateEnforcement'], value: nextEnforcement } as SettingsPathOpView);
+  }
+
   return ops;
 }
 

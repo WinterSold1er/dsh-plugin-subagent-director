@@ -34,6 +34,7 @@ import { SessionId } from '@deepseek-ai/dsh-session';
 import {
   SettingsConflictError,
   type SettingsDescriptor,
+  type SettingsNamespace,
   type SettingsProvider,
 } from '@deepseek-ai/dsh-settings';
 import type {

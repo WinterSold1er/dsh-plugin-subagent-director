@@ -18,7 +18,8 @@ import { modelsForProvider, providerNames } from './allowed-routes.js';
 import type { SubagentDirectorKey } from './locales.js';
 import type { SubagentOptionsState, SubagentOptionsStore } from './store.js';
 import type { RoleDraft, StoredRole } from './store-logic.js';
-import { validateRoleSubmission } from './store-logic.js';
+import { roleIdFromName, validateRoleSubmission } from './store-logic.js';
+import { deriveSwitchesFromEnforcement, resolveEnforcementLevel } from '../enforcement.js';
 import { RoleCard } from './RoleCard.js';
 import { RoleFormFields } from './RoleFormFields.js';
 import {
@@ -119,6 +120,9 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
     const routes = state.allowedRoutes;
     const tools = state.tools;
 
+    const effectiveEnforcement = resolveEnforcementLevel(section);
+    const switches = deriveSwitchesFromEnforcement(effectiveEnforcement);
+
     return (
         <div style={sectionWidth}>
             <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{t('sectionIntro')}</p>
@@ -132,6 +136,14 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
                     model: section?.defaultModel,
                     reasoningEffort: section?.defaultReasoningEffort,
                 }}
+                t={t}
+            />
+            <OrchestrateInterceptCard
+                controller={controller}
+                writable={writable}
+                interceptTools={switches.orchestrateInterceptTools}
+                roundIntercept={switches.orchestrateRoundIntercept}
+                savedRoundIntercept={section?.orchestrateRoundIntercept}
                 t={t}
             />
             <RolesBlock
@@ -278,9 +290,159 @@ function DefaultModelRow({ controller, routes, modelSelectionEnabled, writable, 
             </div>
             {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
             {done ? <div style={{ color: token.accent, fontSize: 12 }}>{t('restoreDone')}</div> : null}
-            <div style={{ display: 'flex', gap: 8 }}>
-                <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
+                </div>
             </div>
+        </div>
+    );
+}
+
+/** The dedicated orchestrate intercept options card with cascading round intercept. */
+function OrchestrateInterceptCard({
+    controller,
+    writable,
+    interceptTools,
+    roundIntercept,
+    savedRoundIntercept,
+    t,
+}: {
+    controller: SubagentOptionsStore;
+    writable: boolean;
+    interceptTools: boolean;
+    roundIntercept: boolean;
+    savedRoundIntercept?: boolean;
+    t: (key: SubagentDirectorKey) => string;
+}): JSX.Element {
+    const [busy, setBusy] = useState(false);
+    const [failure, setFailure] = useState<string | undefined>(undefined);
+
+    const onToggleIntercept = async (value: boolean): Promise<void> => {
+        if (!writable || busy || value === interceptTools) return;
+        setBusy(true);
+        setFailure(undefined);
+        try {
+            if (!value) {
+                // When turning off master switch, only submit orchestrateInterceptTools: false
+                // to avoid poisoning the user's secondary preference (orchestrateRoundIntercept).
+                const message = await controller.setInterceptSwitches({
+                    orchestrateInterceptTools: false,
+                });
+                if (message !== undefined) setFailure(message);
+            } else {
+                const restoredRound = savedRoundIntercept ?? true;
+                const message = await controller.setInterceptSwitches({
+                    orchestrateInterceptTools: true,
+                    orchestrateRoundIntercept: restoredRound,
+                });
+                if (message !== undefined) setFailure(message);
+            }
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const onToggleRoundIntercept = async (value: boolean): Promise<void> => {
+        if (!writable || busy || value === roundIntercept) return;
+        setBusy(true);
+        setFailure(undefined);
+        try {
+            const message = await controller.setInterceptSwitches({
+                orchestrateInterceptTools: true,
+                orchestrateRoundIntercept: value,
+            });
+            if (message !== undefined) setFailure(message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('interceptCardHeading')}</strong>
+            </div>
+            <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>
+                {t('interceptCardHint')}
+            </p>
+
+            {/* 主选项：是否拦截工具调用 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                        <div style={{ color: token.labelPrimary, fontSize: 13, fontWeight: 500 }}>{t('interceptToolsLabel')}</div>
+                        <div style={{ color: token.labelSecondary, fontSize: 12, lineHeight: '16px' }}>{t('interceptToolsHint')}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                            type="button"
+                            style={interceptTools ? primaryButtonStyle : ghostButtonStyle}
+                            disabled={!writable || busy}
+                            onClick={() => void onToggleIntercept(true)}
+                        >
+                            {t('interceptYes')}
+                        </button>
+                        <button
+                            type="button"
+                            style={!interceptTools ? primaryButtonStyle : ghostButtonStyle}
+                            disabled={!writable || busy}
+                            onClick={() => void onToggleIntercept(false)}
+                        >
+                            {t('interceptNo')}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* 级联菜单：当主选择为“是”时展开，包含次级选项“按轮编排拦截工具调用” */}
+            {interceptTools ? (
+                <div
+                    style={{
+                        marginTop: 4,
+                        padding: '10px 12px',
+                        background: token.bgLayer1,
+                        borderRadius: 6,
+                        border: '1px solid ' + token.border,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div>
+                            <div style={{ color: token.labelPrimary, fontSize: 13, fontWeight: 500 }}>
+                                {t('interceptRoundLabel')}
+                            </div>
+                            <div style={{ color: token.labelSecondary, fontSize: 12, lineHeight: '16px' }}>
+                                {t('interceptRoundHint')}
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                                type="button"
+                                style={roundIntercept ? primaryButtonStyle : ghostButtonStyle}
+                                disabled={!writable || busy}
+                                onClick={() => void onToggleRoundIntercept(true)}
+                            >
+                                {t('interceptYes')}
+                            </button>
+                            <button
+                                type="button"
+                                style={!roundIntercept ? primaryButtonStyle : ghostButtonStyle}
+                                disabled={!writable || busy}
+                                onClick={() => void onToggleRoundIntercept(false)}
+                            >
+                                {t('interceptNo')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {failure !== undefined ? (
+                <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div>
+            ) : null}
         </div>
     );
 }

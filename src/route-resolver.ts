@@ -42,6 +42,7 @@
  * a role/default effort without a route is route-owned and stays out.
  */
 import type { AgentOptions } from '@deepseek-ai/dsh-agent';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 
 /** Which layer supplied the resolved agentOptions fields. */
@@ -85,6 +86,26 @@ export interface SubagentDirectorSettings {
   fallbackOnInvalid?: boolean;
   /** Named role templates. */
   roles?: Record<string, RoleTemplate>;
+  /**
+   * Orchestrate-mode tool-level enforcement (design: strict default).
+   * 'strict' = fail-closed allow-list for sticky AND per-turn orchestration;
+   * 'lenient' = tool-level enforcement for the sticky projection only, per-turn
+   * stays prompt-only; 'none' = no tool interception.
+   * This is a USER-SETTING override of the plugin's mount
+   * config (DirectorConfig.orchestrateEnforcement); when absent the mount
+   * config default applies, and that ultimately defaults to 'strict'.
+   */
+  orchestrateEnforcement?: OrchestrateEnforcement;
+  /**
+   * Master switch: whether to intercept tool calls in orchestrate mode.
+   * Default: true.
+   */
+  orchestrateInterceptTools?: boolean;
+  /**
+   * Cascade switch: whether per-turn orchestrate mode intercepts tool calls.
+   * Default: false.
+   */
+  orchestrateRoundIntercept?: boolean;
 }
 
 /** Explicit per-call arguments accepted by the subagent_role tool. */

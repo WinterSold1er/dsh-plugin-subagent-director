@@ -28,7 +28,8 @@ import { createDelegationTool } from './delegation-tool.js';
 import { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
 import { applyGuidance } from './guidance.js';
 import { applyOrchestrate } from './orchestrate.js';
-import { createSettingsSnapshot, installDirectorSettings } from './settings.js';
+import { createSettingsSnapshot, installDirectorSettings, resolveEnforcementLevel, resolveLayeredEnforcement } from './settings.js';
+import type { OrchestrateEnforcement } from './orchestrate-guard.js';
 
 export { Config } from './config.js';
 export type { DirectorConfig } from './config.js';
@@ -55,14 +56,26 @@ export {
   renderOrchestratorUnavailableNotice,
   buildOrchestratorFrame,
   detectOrchestrateRequest,
+  extractSessionEvents,
   ORCHESTRATE_SECTION_NAME,
   ORCHESTRATE_SECTION_ORDER,
   ORCHESTRATE_PROJECTION_KEY,
   ORCHESTRATE_EVENT_TYPE,
   ORCHESTRATE_VALID_MODES,
+  resolveOrchestrateMode,
   type OrchestrateMode,
   type OrchestrateRequest,
 } from './orchestrate.js';
+export {
+  createOrchestrateToolGuard,
+  orchestrateAlwaysAllowedTools,
+  ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
+  AGY_TO_DSH_MAP,
+  STRICT_MIRROR_RUN_CODE,
+  unwrapToolIntent,
+  type UnwrappedToolIntent,
+  type OrchestrateGuardDeps,
+} from './orchestrate-guard.js';
 export { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
 export {
   SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE,
@@ -98,8 +111,20 @@ export function apply(ctx: Context, config: import('./config.js').DirectorConfig
   // ---- role guidance ----------------------------------------------------
   applyGuidance(ctx, getSettings, toolName);
 
-  // ---- orchestrate command + projection + prompt section ----------------
-  applyOrchestrate(ctx, getSettings, toolName);
+  // ---- orchestrate command + projection + prompt section + tool guard ----
+  // Enforcement resolution (layered, strict-at-the-bottom):
+  //   1. user setting when the user toggled it in the settings UI;
+  //   2. else the plugin mount config (DirectorConfig.orchestrateEnforcement);
+  //   3. else 'strict' (the documented fail-closed baseline).
+  // Both the prompt frame and the tool guard read this single resolved value
+  // so they always agree (no false ENFORCED claim).
+  const resolveEnforcement = (): OrchestrateEnforcement => {
+    return resolveLayeredEnforcement(config, getSettings());
+  };
+  applyOrchestrate(ctx, getSettings, toolName, {
+    readOnlyTools: config.orchestrateReadOnlyTools,
+    getEnforcement: resolveEnforcement,
+  });
 
   // ---- close_subagent tool ----------------------------------------------
   // Provider-independent (drain is a global subagents operation), so it

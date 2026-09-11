@@ -34,13 +34,17 @@ import {
   removeRoleOps,
   renameRoleOps,
   restoreDefaultsOps,
+  enforcementOps,
+  interceptSwitchesOps,
   setDefaultRoleOps,
   updateRoleOps,
   type DefaultModelEdits,
+  type InterceptSwitchesEdits,
   type MutationErrorKind,
   type RoleDraft,
   type StoredRole,
   type StoredSection,
+  type OrchestrateEnforcement,
 } from './store-logic.js';
 
 /** The settings namespace this page reads and writes. */
@@ -329,6 +333,18 @@ export class SubagentOptionsStore {
   async restoreDefaults(): Promise<string | undefined> {
     const state = this.store.getSnapshot();
     const result = await this.mutate(restoreDefaultsOps(state.section ?? {}));
+    return result.ok ? undefined : result.message;
+  }
+
+  async setEnforcement(next: OrchestrateEnforcement): Promise<string | undefined> {
+    const state = this.store.getSnapshot();
+    const result = await this.mutate(enforcementOps(state.section ?? {}, next));
+    return result.ok ? undefined : result.message;
+  }
+
+  async setInterceptSwitches(edits: InterceptSwitchesEdits): Promise<string | undefined> {
+    const state = this.store.getSnapshot();
+    const result = await this.mutate(interceptSwitchesOps(state.section ?? {}, edits));
     return result.ok ? undefined : result.message;
   }
 }
