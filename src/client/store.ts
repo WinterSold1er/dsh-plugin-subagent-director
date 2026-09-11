@@ -32,6 +32,7 @@ import {
   classifyMutateError,
   defaultModelOps,
   removeRoleOps,
+  renameRoleOps,
   restoreDefaultsOps,
   setDefaultRoleOps,
   updateRoleOps,
@@ -294,6 +295,17 @@ export class SubagentOptionsStore {
 
   async updateRole(id: string, before: StoredRole | undefined, draft: RoleDraft): Promise<string | undefined> {
     const result = await this.mutate(updateRoleOps(id, before, draft));
+    return result.ok ? undefined : result.message;
+  }
+
+  async renameRole(
+    oldId: string,
+    newId: string,
+    before: StoredRole | undefined,
+    draft: RoleDraft,
+  ): Promise<string | undefined> {
+    const state = this.store.getSnapshot();
+    const result = await this.mutate(renameRoleOps(oldId, newId, before, draft, state.section?.defaultRole));
     return result.ok ? undefined : result.message;
   }
 

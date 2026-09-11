@@ -64,6 +64,10 @@ export type SubagentDirectorKey =
   | 'toolFilterNoMatch'
   | 'restoreDone'
   | 'invalidRoleId'
+  | 'duplicateRoleId'
+  | 'requiredDisplayName'
+  | 'requiredDescription'
+  | 'reasoningEffortAdvisory'
   | 'bridgeUnavailable'
   | 'modelRanOn'
   | 'modelNotRecorded'
@@ -135,6 +139,10 @@ export const en: Record<SubagentDirectorKey, string> = {
   "toolFilterNoMatch": "No tools match the search.",
   "restoreDone": "Defaults restored",
   "invalidRoleId": "Role id must be kebab-case (lowercase letters, digits, single hyphens).",
+  "duplicateRoleId": "Role id already exists.",
+  "requiredDisplayName": "Display name is required.",
+  "requiredDescription": "Delegation guidance is required.",
+  "reasoningEffortAdvisory": "(advisory)",
   "bridgeUnavailable": "The Subagent Director settings bridge is not available on this server. Please update/restart the web application so it installs the /subagent-director channel.",
   "modelRanOn": "Subagent ran on",
   "modelNotRecorded": "Subagent model not recorded yet",
@@ -207,6 +215,10 @@ export const zh: Record<SubagentDirectorKey, string> = {
   "toolFilterNoMatch": "没有匹配搜索的工具。",
   "restoreDone": "已恢复默认",
   "invalidRoleId": "角色 id 必须为 kebab-case（小写字母、数字、单个连字符）。",
+  "duplicateRoleId": "角色 ID 已存在。",
+  "requiredDisplayName": "显示名称为必填项。",
+  "requiredDescription": "委派指引为必填项。",
+  "reasoningEffortAdvisory": "(仅作建议)",
   "bridgeUnavailable": "此服务器尚未提供 Subagent Director 设置桥接通道（/subagent-director）。请重启 Web 应用以安装该通道后再试。",
   "modelRanOn": "子代理实际运行于",
   "modelNotRecorded": "尚未记录到子代理模型",

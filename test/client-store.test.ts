@@ -5,7 +5,9 @@
  * conflict → re-read decision, default-role switching, and the
  * clear-to-composition-default unset ops are all pure functions.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { SubagentOptionsStore } from '../src/client/store.js';
+import { SUBAGENT_DIRECTOR_RPC_CHANNEL, SUBAGENT_DIRECTOR_RPC_MUTATE } from '../src/bridge-contract.js';
 import {
   addRoleOps,
   advanceRevision,
@@ -16,11 +18,16 @@ import {
   markConflict,
   optional,
   removeRoleOps,
+  renameRoleOps,
+  resolveRoleId,
   restoreDefaultsOps,
   roleIdFromName,
   setDefaultRoleOps,
   toolFilterOps,
   updateRoleOps,
+  validateRoleIdFormat,
+  validateRoleIdUnique,
+  validateRoleSubmission,
   type DefaultModelEdits,
   type RevisionState,
   type RoleDraft,
@@ -218,6 +225,243 @@ describe('roleIdFromName', () => {
   });
 });
 
+describe('validateRoleIdFormat', () => {
+  it('accepts valid kebab-case strings', () => {
+    expect(validateRoleIdFormat('coder')).toBe(true);
+    expect(validateRoleIdFormat('code-reviewer')).toBe(true);
+    expect(validateRoleIdFormat('qa-agent-1')).toBe(true);
+    expect(validateRoleIdFormat('role-42-sub')).toBe(true);
+  });
+
+  it('rejects invalid kebab-case strings', () => {
+    expect(validateRoleIdFormat('')).toBe(false);
+    expect(validateRoleIdFormat('Coder')).toBe(false);
+    expect(validateRoleIdFormat('code_reviewer')).toBe(false);
+    expect(validateRoleIdFormat('code reviewer')).toBe(false);
+    expect(validateRoleIdFormat('-coder')).toBe(false);
+    expect(validateRoleIdFormat('coder-')).toBe(false);
+    expect(validateRoleIdFormat('code--reviewer')).toBe(false);
+    expect(validateRoleIdFormat('code@reviewer')).toBe(false);
+    expect(validateRoleIdFormat('   ')).toBe(false);
+  });
+});
+
+describe('validateRoleIdUnique', () => {
+  const existing = new Set(['coder', 'reviewer', 'architect']);
+
+  it('returns true if ID is not in existing set', () => {
+    expect(validateRoleIdUnique('qa', existing)).toBe(true);
+    expect(validateRoleIdUnique('tester', existing)).toBe(true);
+  });
+
+  it('returns false if ID is in existing set and currentId is not provided', () => {
+    expect(validateRoleIdUnique('coder', existing)).toBe(false);
+    expect(validateRoleIdUnique('reviewer', existing)).toBe(false);
+  });
+
+  it('returns true if ID matches currentId (editing same role)', () => {
+    expect(validateRoleIdUnique('coder', existing, 'coder')).toBe(true);
+  });
+
+  it('returns false if ID is in existing set and matches another role', () => {
+    expect(validateRoleIdUnique('reviewer', existing, 'coder')).toBe(false);
+  });
+});
+
+describe('validateRoleSubmission', () => {
+  const existing = new Set(['coder', 'reviewer']);
+
+  it('auto-derives kebab-case ID from displayName when idInput is empty in add mode', () => {
+    const res = validateRoleSubmission('', 'Senior Tester', existing);
+    expect(res).toEqual({ ok: true, id: 'senior-tester' });
+  });
+
+  it('accepts valid custom ID when unique', () => {
+    const res = validateRoleSubmission('qa-lead', 'Senior Tester', existing);
+    expect(res).toEqual({ ok: true, id: 'qa-lead' });
+  });
+
+  it('rejects invalid ID format', () => {
+    const res = validateRoleSubmission('Invalid_ID', 'Senior Tester', existing);
+    expect(res).toEqual({ ok: false, errorKey: 'invalidRoleId' });
+  });
+
+  it('rejects duplicate ID when already taken by another role', () => {
+    const res = validateRoleSubmission('reviewer', 'Senior Tester', existing);
+    expect(res).toEqual({ ok: false, errorKey: 'duplicateRoleId' });
+  });
+
+  it('allows same ID in edit mode when matching currentId', () => {
+    const res = validateRoleSubmission('coder', 'Updated Coder', existing, 'coder');
+    expect(res).toEqual({ ok: true, id: 'coder' });
+  });
+
+  it('rejects duplicate ID in edit mode when matching another existing role', () => {
+    const res = validateRoleSubmission('reviewer', 'Updated Coder', existing, 'coder');
+    expect(res).toEqual({ ok: false, errorKey: 'duplicateRoleId' });
+  });
+
+  it('rejects empty ID in edit mode instead of falling back to currentId', () => {
+    const resEmpty = validateRoleSubmission('', 'Updated Coder', existing, 'coder');
+    expect(resEmpty).toEqual({ ok: false, errorKey: 'invalidRoleId' });
+
+    const resWhitespace = validateRoleSubmission('   ', 'Updated Coder', existing, 'coder');
+    expect(resWhitespace).toEqual({ ok: false, errorKey: 'invalidRoleId' });
+  });
+
+  it('rejects empty or whitespace-only displayName', () => {
+    const resEmpty = validateRoleSubmission('coder', '', existing);
+    expect(resEmpty).toEqual({ ok: false, errorKey: 'requiredDisplayName' });
+
+    const resWhitespace = validateRoleSubmission('coder', '   ', existing);
+    expect(resWhitespace).toEqual({ ok: false, errorKey: 'requiredDisplayName' });
+  });
+
+  it('rejects empty or whitespace-only description when provided', () => {
+    const resEmpty = validateRoleSubmission('coder', 'Coder', existing, undefined, '');
+    expect(resEmpty).toEqual({ ok: false, errorKey: 'requiredDescription' });
+
+    const resWhitespace = validateRoleSubmission('coder', 'Coder', existing, undefined, '   ');
+    expect(resWhitespace).toEqual({ ok: false, errorKey: 'requiredDescription' });
+  });
+});
+
+describe('resolveRoleId', () => {
+  it('returns trimmed customId when non-empty', () => {
+    expect(resolveRoleId('my-custom-id', 'Any Name', new Set())).toBe('my-custom-id');
+    expect(resolveRoleId('  custom-id  ', 'Any Name', new Set())).toBe('custom-id');
+  });
+
+  it('falls back to roleIdFromName when customId is undefined or whitespace', () => {
+    expect(resolveRoleId(undefined, 'Code Reviewer', new Set())).toBe('code-reviewer');
+    expect(resolveRoleId('', 'Code Reviewer', new Set())).toBe('code-reviewer');
+    expect(resolveRoleId('   ', 'Code Reviewer', new Set())).toBe('code-reviewer');
+  });
+});
+
+describe('renameRoleOps', () => {
+  const stored: StoredRole = {
+    displayName: 'Old Coder',
+    description: 'Writes code',
+    persona: 'You code',
+    provider: 'deepseek-official',
+    model: 'deepseek-chat',
+    reasoningEffort: 'low',
+    toolFilter: { allow: ['bash'], deny: ['eval'] },
+  };
+
+  it('delegates to updateRoleOps when oldId === newId', () => {
+    const updatedDraft: RoleDraft = {
+      ...stored,
+      displayName: 'New Coder',
+    };
+    const ops = renameRoleOps('coder', 'coder', stored, updatedDraft);
+    expect(ops).toEqual(updateRoleOps('coder', stored, updatedDraft));
+  });
+
+  it('generates atomic unset, set, and preserves defaultRole when defaultRole matches oldId', () => {
+    const newDraft: RoleDraft = {
+      displayName: 'Senior Coder',
+      description: 'Writes senior code',
+      persona: 'You code expertly',
+      provider: 'deepseek-official',
+      model: 'deepseek-reasoner',
+      reasoningEffort: 'high',
+      toolFilter: { allow: ['bash', 'read'] },
+    };
+
+    const ops = renameRoleOps('coder', 'senior-coder', stored, newDraft, 'coder');
+    expect(ops).toEqual([
+      { op: 'unset', path: ['roles', 'coder'] },
+      {
+        op: 'set',
+        path: ['roles', 'senior-coder'],
+        value: {
+          displayName: 'Senior Coder',
+          description: 'Writes senior code',
+          persona: 'You code expertly',
+          provider: 'deepseek-official',
+          model: 'deepseek-reasoner',
+          reasoningEffort: 'high',
+          toolFilter: { allow: ['bash', 'read'], deny: ['eval'] },
+        },
+      },
+      { op: 'set', path: ['defaultRole'], value: 'senior-coder' },
+    ]);
+  });
+
+  it('does not emit defaultRole op when defaultRole does not match oldId', () => {
+    const newDraft: RoleDraft = {
+      displayName: 'Senior Coder',
+      description: 'Writes senior code',
+    };
+    const storedNoDeny: StoredRole = {
+      displayName: 'Old Coder',
+      description: 'Writes code',
+    };
+    const ops = renameRoleOps('coder', 'senior-coder', storedNoDeny, newDraft, 'reviewer');
+    expect(ops).toEqual([
+      { op: 'unset', path: ['roles', 'coder'] },
+      {
+        op: 'set',
+        path: ['roles', 'senior-coder'],
+        value: {
+          displayName: 'Senior Coder',
+          description: 'Writes senior code',
+        },
+      },
+    ]);
+  });
+
+  it('preserves unknown/extra fields present on the before role', () => {
+    const storedWithCustom = {
+      ...stored,
+      customAnnotation: 'important',
+      arbitraryMeta: { version: 1 },
+    } as StoredRole;
+    const newDraft: RoleDraft = {
+      displayName: 'Senior Coder',
+      description: 'Writes senior code',
+    };
+    const ops = renameRoleOps('coder', 'senior-coder', storedWithCustom, newDraft);
+    expect(ops[1]).toMatchObject({
+      op: 'set',
+      path: ['roles', 'senior-coder'],
+    });
+    const val = (ops[1] as any).value;
+    expect(val.customAnnotation).toBe('important');
+    expect(val.arbitraryMeta).toEqual({ version: 1 });
+  });
+
+  it('preserves before.toolFilter.deny when draft.toolFilter.allow is empty or omitted', () => {
+    const draftEmptyAllow: RoleDraft = {
+      displayName: 'Senior Coder',
+      description: 'Writes senior code',
+      toolFilter: { allow: [] },
+    };
+    const ops = renameRoleOps('coder', 'senior-coder', stored, draftEmptyAllow);
+    const val = (ops[1] as any).value;
+    expect(val.toolFilter).toEqual({ deny: ['eval'] });
+  });
+
+  it('does not force { deny: [] } when before has no deny list', () => {
+    const storedNoDeny: StoredRole = {
+      displayName: 'Old Coder',
+      description: 'Writes code',
+      toolFilter: { allow: ['bash'] },
+    };
+    const draftWithAllow: RoleDraft = {
+      displayName: 'New Coder',
+      description: 'Writes code',
+      toolFilter: { allow: ['read'] },
+    };
+    const ops = renameRoleOps('coder', 'senior-coder', storedNoDeny, draftWithAllow);
+    const val = (ops[1] as any).value;
+    expect(val.toolFilter).toEqual({ allow: ['read'] });
+    expect(val.toolFilter.deny).toBeUndefined();
+  });
+});
+
 describe('classifyMutateError', () => {
   it('maps settings-conflict to conflict and schema validation to rejected', () => {
     expect(classifyMutateError('settings-conflict')).toBe('conflict');
@@ -228,6 +472,65 @@ describe('classifyMutateError', () => {
   it('treats unknown/undefined codes as fatal so the UI can fall back to server text', () => {
     expect(classifyMutateError('nope')).toBe('fatal');
     expect(classifyMutateError(undefined)).toBe('fatal');
+  });
+});
+
+describe('SubagentOptionsStore.renameRole', () => {
+  it('invokes mutate with renameRoleOps including defaultRole migration', async () => {
+    const fakeRpc = {
+      call: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          revision: 2,
+          value: {
+            roles: {
+              'new-coder': { displayName: 'New Coder', description: 'Desc' },
+            },
+            defaultRole: 'new-coder',
+          },
+        },
+      }),
+    };
+    const store = new SubagentOptionsStore({
+      rpc: fakeRpc as never,
+      t: (k) => k,
+    });
+    store.store.update((s) => {
+      s.revision = 1;
+      s.section = {
+        roles: {
+          coder: { displayName: 'Old Coder', description: 'Desc' },
+        },
+        defaultRole: 'coder',
+      };
+    });
+
+    const err = await (store as any).renameRole(
+      'coder',
+      'new-coder',
+      { displayName: 'Old Coder', description: 'Desc' },
+      { displayName: 'New Coder', description: 'Desc' },
+    );
+    expect(err).toBeUndefined();
+    expect(fakeRpc.call).toHaveBeenCalledWith(
+      SUBAGENT_DIRECTOR_RPC_CHANNEL,
+      SUBAGENT_DIRECTOR_RPC_MUTATE,
+      {
+        ns: 'subagent-director',
+        expectedRevision: 1,
+        ops: [
+          { op: 'unset', path: ['roles', 'coder'] },
+          {
+            op: 'set',
+            path: ['roles', 'new-coder'],
+            value: { displayName: 'New Coder', description: 'Desc' },
+          },
+          { op: 'set', path: ['defaultRole'], value: 'new-coder' },
+        ],
+      },
+    );
+    expect(store.store.getSnapshot().revision).toBe(2);
+    expect(store.store.getSnapshot().section?.defaultRole).toBe('new-coder');
   });
 });
 

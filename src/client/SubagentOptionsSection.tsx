@@ -18,9 +18,9 @@ import { modelsForProvider, providerNames } from './allowed-routes.js';
 import type { SubagentDirectorKey } from './locales.js';
 import type { SubagentOptionsState, SubagentOptionsStore } from './store.js';
 import type { RoleDraft, StoredRole } from './store-logic.js';
-import { roleIdFromName } from './store-logic.js';
+import { validateRoleSubmission } from './store-logic.js';
 import { RoleCard } from './RoleCard.js';
-import { ToolSetPicker } from './ToolSetPicker.js';
+import { RoleFormFields } from './RoleFormFields.js';
 import {
   cardStyle,
   fieldLabelStyle,
@@ -286,7 +286,7 @@ function DefaultModelRow({ controller, routes, modelSelectionEnabled, writable, 
 }
 
 /** The role-template roster: cards plus an inline add form. */
-function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t }: {
+export function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t }: {
     controller: SubagentOptionsStore;
     routes: readonly DirectorAllowedRoute[];
     tools: readonly string[];
@@ -296,6 +296,8 @@ function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t
     t: (key: SubagentDirectorKey) => string;
 }): JSX.Element {
     const [adding, setAdding] = useState(false);
+    const [customId, setCustomId] = useState('');
+    const [idError, setIdError] = useState<string | undefined>(undefined);
     const [draft, setDraft] = useState<RoleDraft>({
         displayName: '',
         description: '',
@@ -309,17 +311,24 @@ function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t
     const [failure, setFailure] = useState<string | undefined>(undefined);
 
     const beginAdd = (): void => {
+        setCustomId('');
+        setIdError(undefined);
         setDraft({ displayName: '', description: '', persona: '', provider: '', model: '', reasoningEffort: '', toolFilter: { allow: [] } });
         setFailure(undefined);
         setAdding(true);
     };
 
     const saveAdd = async (): Promise<void> => {
+        const existing = new Set(roles.map(([id]) => id));
+        const validation = validateRoleSubmission(customId, draft.displayName, existing, undefined, draft.description);
+        if (!validation.ok) {
+            setIdError(t(validation.errorKey!));
+            return;
+        }
+        const id = validation.id!;
         setBusy(true);
         setFailure(undefined);
         try {
-            const existing = new Set(roles.map(([id]) => id));
-            const id = roleIdFromName(draft.displayName, existing);
             const message = await controller.addRole(id, draft);
             if (message !== undefined) {
                 setFailure(message);
@@ -331,6 +340,8 @@ function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t
         }
     };
 
+    const existingRoleIds = new Set(roles.map(([id]) => id));
+
     return (
         <div style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
@@ -341,32 +352,20 @@ function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t
 
             {adding ? (
                 <div style={{ border: '1px dashed ' + token.border, borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={rowStyle}>
-                        <label style={fieldLabelStyle}>{t('roleDisplayName')}</label>
-                        <input
-                            style={textInputStyle}
-                            value={draft.displayName}
-                            placeholder={t('displayNamePlaceholder')}
-                            onChange={(e) => setDraft((d) => ({ ...d, displayName: e.target.value }))}
-                        />
-                    </div>
-                    <div style={rowStyle}>
-                        <label style={fieldLabelStyle}>{t('roleDescription')}</label>
-                        <textarea
-                            style={textAreaStyle}
-                            value={draft.description}
-                            placeholder={t('descriptionPlaceholder')}
-                            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-                        />
-                    </div>
-                    <div style={rowStyle}>
-                        <ToolSetPicker
-                            tools={tools}
-                            selected={draft.toolFilter?.allow ?? []}
-                            t={t}
-                            onChange={(allow) => setDraft((d) => ({ ...d, toolFilter: { allow } }))}
-                        />
-                    </div>
+                    <RoleFormFields
+                        id={customId}
+                        onIdChange={(val) => {
+                            setCustomId(val);
+                            if (idError) setIdError(undefined);
+                        }}
+                        idError={idError}
+                        draft={draft}
+                        onDraftChange={setDraft}
+                        routes={routes}
+                        tools={tools}
+                        t={t}
+                        disabled={!writable || busy}
+                    />
                     {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
                     <div style={{ display: 'flex', gap: 8 }}>
                         <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void saveAdd()}>{t('addRole')}</button>
@@ -386,8 +385,15 @@ function RolesBlock({ controller, routes, tools, writable, roles, defaultRole, t
                         isDefault={defaultRole === id}
                         routes={routes}
                         tools={tools}
+                        existingRoleIds={existingRoleIds}
+                        writable={writable}
                         t={t}
-                        onSave={(d: RoleDraft) => controller.updateRole(id, role, d)}
+                        onSave={(newId: string, d: RoleDraft) => {
+                            if (newId !== id) {
+                                return controller.renameRole(id, newId, role, d);
+                            }
+                            return controller.updateRole(id, role, d);
+                        }}
                         onDelete={() => controller.removeRole(id)}
                         onSetDefault={() => controller.setDefaultRole(id)}
                     />

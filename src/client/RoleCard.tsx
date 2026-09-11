@@ -6,19 +6,13 @@
 import { useState } from 'react';
 import type { DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
-import { modelsForProvider, providerNames } from './allowed-routes.js';
-import type { RoleDraft, StoredRole } from './store-logic.js';
-import { ToolSetPicker } from './ToolSetPicker.js';
+import { type RoleDraft, type StoredRole, validateRoleSubmission } from './store-logic.js';
+import { RoleFormFields } from './RoleFormFields.js';
 import {
   cardStyle,
   dangerButtonStyle,
-  fieldLabelStyle,
   ghostButtonStyle,
   primaryButtonStyle,
-  rowStyle,
-  selectStyle,
-  textAreaStyle,
-  textInputStyle,
   token,
 } from './ui.js';
 
@@ -33,19 +27,40 @@ export interface RoleCardProps {
   routes: readonly DirectorAllowedRoute[];
   /** Distinct model-visible tool names (for the tool-set row). */
   tools: readonly string[];
+  /** All existing role IDs (for uniqueness check during rename). */
+  existingRoleIds: ReadonlySet<string>;
+  /** Whether settings are writable by the current user. */
+  writable: boolean;
+  /** Optional initial editing state (useful for tests). */
+  initialEditing?: boolean;
   /** Section copy. */
   t: (key: SubagentDirectorKey) => string;
   /** Commit an edited role; returns a localized failure message or undefined. */
-  onSave: (draft: RoleDraft) => Promise<string | undefined>;
+  onSave: (newId: string, draft: RoleDraft) => Promise<string | undefined>;
   /** Delete this role; returns a localized failure message or undefined. */
   onDelete: () => Promise<string | undefined>;
   /** Promote this role to default; returns a localized failure message or undefined. */
   onSetDefault: () => Promise<string | undefined>;
 }
 
-export function RoleCard({ id, role, isDefault, routes, tools, t, onSave, onDelete, onSetDefault }: RoleCardProps): JSX.Element {
-  const [editing, setEditing] = useState(false);
+export function RoleCard({
+  id,
+  role,
+  isDefault,
+  routes,
+  tools,
+  existingRoleIds,
+  writable,
+  initialEditing = false,
+  t,
+  onSave,
+  onDelete,
+  onSetDefault,
+}: RoleCardProps): JSX.Element {
+  const [editing, setEditing] = useState(initialEditing);
   const [busy, setBusy] = useState(false);
+  const [cardId, setCardId] = useState(id);
+  const [idError, setIdError] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState<RoleDraft>({
     displayName: role.displayName,
@@ -57,16 +72,33 @@ export function RoleCard({ id, role, isDefault, routes, tools, t, onSave, onDele
     toolFilter: { allow: role.toolFilter?.allow ?? [] },
   });
 
-  const provider = draft.provider || role.provider;
-  const model = draft.model || role.model;
-  const providers = providerNames(routes);
-  const modelOptions = provider ? modelsForProvider(routes, provider) : [];
+  const beginEdit = (): void => {
+    setCardId(id);
+    setIdError(undefined);
+    setFailure(undefined);
+    setDraft({
+      displayName: role.displayName,
+      description: role.description,
+      persona: role.persona ?? '',
+      provider: role.provider ?? '',
+      model: role.model ?? '',
+      reasoningEffort: role.reasoningEffort ?? '',
+      toolFilter: { allow: role.toolFilter?.allow ?? [] },
+    });
+    setEditing(true);
+  };
 
   const save = async (): Promise<void> => {
+    const validation = validateRoleSubmission(cardId, draft.displayName, existingRoleIds, id, draft.description);
+    if (!validation.ok) {
+      setIdError(t(validation.errorKey!));
+      return;
+    }
+    const targetId = validation.id!;
     setBusy(true);
     setFailure(undefined);
     try {
-      const message = await onSave(draft);
+      const message = await onSave(targetId, draft);
       if (message !== undefined) {
         setFailure(message);
         return;
@@ -89,12 +121,6 @@ export function RoleCard({ id, role, isDefault, routes, tools, t, onSave, onDele
     }
   };
 
-  const setField = (field: keyof RoleDraft, value: string): void => {
-    setDraft((d) => ({ ...d, [field]: value }));
-  };
-
-  const allowList = draft.toolFilter?.allow ?? [];
-
   if (editing) {
     return (
       <div style={cardStyle}>
@@ -102,68 +128,26 @@ export function RoleCard({ id, role, isDefault, routes, tools, t, onSave, onDele
           <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('roleDisplayName')}</strong>
           {isDefault ? <span style={{ color: token.accent, fontSize: 12 }}>{t('defaultRoleBadge')}</span> : null}
         </div>
-        <div style={rowStyle}>
-          <label style={fieldLabelStyle}>{t('roleDisplayName')}</label>
-          <input style={textInputStyle} value={draft.displayName} placeholder={t('displayNamePlaceholder')} onChange={(e) => setField('displayName', e.target.value)} />
-        </div>
-        <div style={rowStyle}>
-          <label style={fieldLabelStyle}>{t('roleDescription')}</label>
-          <textarea style={textAreaStyle} value={draft.description} placeholder={t('descriptionPlaceholder')} onChange={(e) => setField('description', e.target.value)} />
-        </div>
-        <div style={rowStyle}>
-          <label style={fieldLabelStyle}>{t('rolePersona')}</label>
-          <textarea style={textAreaStyle} value={draft.persona} placeholder={t('personaPlaceholder')} onChange={(e) => setField('persona', e.target.value)} />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-          <div style={rowStyle}>
-            <label style={fieldLabelStyle}>{t('provider')}</label>
-            <select
-              style={selectStyle}
-              value={draft.provider}
-              disabled={providers.length === 0}
-              onChange={(e) => setField('provider', e.target.value)}
-            >
-              <option value="">—</option>
-              {providers.map((id) => (
-                <option key={id} value={id}>{id}</option>
-              ))}
-            </select>
-          </div>
-          <div style={rowStyle}>
-            <label style={fieldLabelStyle}>{t('model')}</label>
-            <select
-              style={selectStyle}
-              value={draft.model}
-              disabled={modelOptions.length === 0}
-              onChange={(e) => setField('model', e.target.value)}
-            >
-              <option value="">—</option>
-              {modelOptions.map((m) => (
-                <option key={m.model} value={m.model}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-          <div style={rowStyle}>
-            <label style={fieldLabelStyle}>{t('reasoningEffort')}</label>
-            <input
-              style={textInputStyle}
-              value={draft.reasoningEffort}
-              placeholder="(advisory)"
-              onChange={(e) => setField('reasoningEffort', e.target.value)}
-            />
-          </div>
-        </div>
-        <div style={rowStyle}>
-          <ToolSetPicker
-            tools={tools}
-            selected={allowList}
-            t={t}
-            onChange={(allow) => setDraft((d) => ({ ...d, toolFilter: { allow } }))}
-          />
-        </div>
+        <RoleFormFields
+          id={cardId}
+          onIdChange={(newId) => {
+            setCardId(newId);
+            if (idError) setIdError(undefined);
+          }}
+          idError={idError}
+          draft={draft}
+          onDraftChange={(newDraft) => {
+            setDraft(newDraft);
+            if (idError) setIdError(undefined);
+          }}
+          routes={routes}
+          tools={tools}
+          t={t}
+          disabled={!writable || busy}
+        />
         {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button style={primaryButtonStyle} disabled={busy} onClick={save}>{t('save')}</button>
+          <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
           <button style={ghostButtonStyle} disabled={busy} onClick={() => setEditing(false)}>{t('cancel')}</button>
         </div>
       </div>
@@ -193,9 +177,9 @@ export function RoleCard({ id, role, isDefault, routes, tools, t, onSave, onDele
       </div>
       {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
       <div style={{ display: 'flex', gap: 8 }}>
-        <button style={ghostButtonStyle} disabled={busy} onClick={() => setEditing(true)}>{t('edit')}</button>
-        <button style={ghostButtonStyle} disabled={busy || isDefault} onClick={() => (void onSetDefault(), undefined)}>{t('setDefaultRole')}</button>
-        <button style={dangerButtonStyle} disabled={busy} onClick={remove}>{t('deleteRole')}</button>
+        <button style={ghostButtonStyle} disabled={!writable || busy} onClick={beginEdit}>{t('edit')}</button>
+        <button style={ghostButtonStyle} disabled={!writable || busy || isDefault} onClick={() => (void onSetDefault(), undefined)}>{t('setDefaultRole')}</button>
+        <button style={dangerButtonStyle} disabled={!writable || busy} onClick={remove}>{t('deleteRole')}</button>
       </div>
     </div>
   );

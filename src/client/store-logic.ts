@@ -65,6 +65,85 @@ export function isBlank(value: string | undefined | null): boolean {
 /** Kebab-case role ids (mirrors the Host validator in src/settings.ts). */
 export const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** Validate role id matches kebab-case format. */
+export function validateRoleIdFormat(id: string): boolean {
+  return KEBAB_CASE.test(id);
+}
+
+/** Validate role id is unique among existing roles, allowing currentId during edit. */
+export function validateRoleIdUnique(
+  id: string,
+  existing: ReadonlySet<string> | Iterable<string>,
+  currentId?: string,
+): boolean {
+  if (currentId !== undefined && id === currentId) return true;
+  const set = existing instanceof Set ? existing : new Set(existing);
+  return !set.has(id);
+}
+
+/** Resolve final role id: use customId if provided, otherwise auto-derive from name. */
+export function resolveRoleId(
+  customId: string | undefined,
+  name: string,
+  existing: ReadonlySet<string>,
+  prefix = 'role',
+): string {
+  if (customId !== undefined && customId.trim().length > 0) {
+    return customId.trim();
+  }
+  return roleIdFromName(name, existing, prefix);
+}
+
+export interface RoleValidationResult {
+  ok: boolean;
+  id?: string;
+  errorKey?: 'invalidRoleId' | 'duplicateRoleId' | 'requiredDisplayName' | 'requiredDescription';
+}
+
+/**
+ * Validate role submission for add or edit modes.
+ * - Checks displayName is non-empty and not pure whitespace.
+ * - If description is provided, checks it is not pure whitespace.
+ * - In edit mode (currentId present):
+ *   - if idInput is empty/blank, rejects with 'invalidRoleId' (no silent fallback).
+ * - In add mode:
+ *   - if idInput is empty/blank, derives kebab-case id from displayName.
+ * - Validates format against KEBAB_CASE.
+ * - Validates uniqueness against existing roles (allowing currentId).
+ */
+export function validateRoleSubmission(
+  idInput: string | undefined,
+  displayName: string,
+  existing: ReadonlySet<string>,
+  currentId?: string,
+  description?: string,
+): RoleValidationResult {
+  if (displayName === undefined || displayName.trim().length === 0) {
+    return { ok: false, errorKey: 'requiredDisplayName' };
+  }
+  if (description !== undefined && description.trim().length === 0) {
+    return { ok: false, errorKey: 'requiredDescription' };
+  }
+
+  const trimmed = idInput?.trim() ?? '';
+  let candidate: string;
+  if (trimmed.length > 0) {
+    candidate = trimmed;
+  } else if (currentId !== undefined) {
+    return { ok: false, errorKey: 'invalidRoleId' };
+  } else {
+    candidate = resolveRoleId('', displayName, existing);
+  }
+
+  if (!validateRoleIdFormat(candidate)) {
+    return { ok: false, errorKey: 'invalidRoleId' };
+  }
+  if (!validateRoleIdUnique(candidate, existing, currentId)) {
+    return { ok: false, errorKey: 'duplicateRoleId' };
+  }
+  return { ok: true, id: candidate };
+}
+
 /** Generate a kebab-case id from a display name; falls back to a prefix + counter. */
 export function roleIdFromName(name: string, existing: ReadonlySet<string>, prefix = 'role'): string {
   const base = name
@@ -158,6 +237,70 @@ export function updateRoleOps(id: string, before: StoredRole | undefined, draft:
   push(fieldEdit([...base, 'model'], b.model, draft.model));
   push(fieldEdit([...base, 'reasoningEffort'], b.reasoningEffort, draft.reasoningEffort));
   push(toolFilterOps(base, before, draft));
+  return ops;
+}
+
+/**
+ * Ops to rename or update a role atomically.
+ * If oldId === newId, falls back to standard field diff updateRoleOps.
+ * If oldId !== newId, unsets old role, sets new role with draft fields,
+ * and updates defaultRole if defaultRole matched oldId.
+ */
+export function renameRoleOps(
+  oldId: string,
+  newId: string,
+  before: StoredRole | undefined,
+  draft: RoleDraft,
+  defaultRole?: string,
+): SettingsPathOpView[] {
+  if (oldId === newId) {
+    return updateRoleOps(oldId, before, draft);
+  }
+
+  // Preserve all existing/unknown fields from before
+  const {
+    displayName: _d,
+    description: _desc,
+    persona: _p,
+    provider: _pr,
+    model: _m,
+    reasoningEffort: _re,
+    toolFilter: _tf,
+    ...extraBefore
+  } = (before ?? {}) as Record<string, unknown>;
+
+  const allow = draft.toolFilter?.allow?.length ? [...draft.toolFilter.allow] : undefined;
+  const deny = draft.toolFilter?.deny ?? before?.toolFilter?.deny;
+  const toolFilter =
+    allow !== undefined || deny !== undefined
+      ? {
+          ...(allow !== undefined ? { allow } : {}),
+          ...(deny !== undefined ? { deny } : {}),
+        }
+      : undefined;
+
+  const value: Record<string, unknown> = {
+    ...extraBefore,
+    displayName: draft.displayName,
+    description: draft.description,
+    ...(optional(draft.persona) !== undefined ? { persona: optional(draft.persona) } : {}),
+    ...(optional(draft.provider) !== undefined ? { provider: optional(draft.provider) } : {}),
+    ...(optional(draft.model) !== undefined ? { model: optional(draft.model) } : {}),
+    ...(optional(draft.reasoningEffort) !== undefined ? { reasoningEffort: optional(draft.reasoningEffort) } : {}),
+    ...(toolFilter !== undefined ? { toolFilter } : {}),
+  };
+
+  const ops: SettingsPathOpView[] = [
+    { op: 'unset', path: [ROLES_PATH[0], oldId] } as SettingsPathOpView,
+    {
+      op: 'set',
+      path: [ROLES_PATH[0], newId],
+      value,
+    } as SettingsPathOpView,
+  ];
+  if (defaultRole === oldId) {
+    ops.push({ op: 'set', path: ['defaultRole'], value: newId } as SettingsPathOpView);
+  }
   return ops;
 }
 
