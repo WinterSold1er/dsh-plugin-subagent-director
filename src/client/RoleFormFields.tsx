@@ -9,6 +9,8 @@ import { modelsForProvider, providerNames } from './allowed-routes.js';
 import type { RoleDraft } from './store-logic.js';
 import { ToolSetPicker } from './ToolSetPicker.js';
 import {
+  badgeDotStyle,
+  calloutBannerStyle,
   fieldLabelStyle,
   rowStyle,
   selectStyle,
@@ -38,6 +40,8 @@ export interface RoleFormFieldsProps {
   disabled?: boolean;
   /** Whether the role id field is specifically disabled. */
   idDisabled?: boolean;
+  /** Whether this role is the default role (Main Agent). */
+  isDefault?: boolean;
 }
 
 /**
@@ -68,6 +72,7 @@ export function RoleFormFields({
   t,
   disabled = false,
   idDisabled = false,
+  isDefault = false,
 }: RoleFormFieldsProps): JSX.Element {
   const providers = providerNames(routes);
   const modelOptions = draft.provider ? modelsForProvider(routes, draft.provider) : [];
@@ -126,7 +131,7 @@ export function RoleFormFields({
           onChange={(e) => setField('persona', e.target.value)}
         />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
         <div style={rowStyle}>
           <label style={fieldLabelStyle}>{t('provider')}</label>
           <select
@@ -167,10 +172,24 @@ export function RoleFormFields({
         </div>
       </div>
       <div style={rowStyle}>
+        {isDefault ? (
+          <div style={calloutBannerStyle}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ color: token.labelPrimary, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={badgeDotStyle} />
+                {t('mainAgentCalloutTitle')}
+              </div>
+              <div style={{ color: token.labelSecondary, fontSize: 12, lineHeight: '18px' }}>
+                {t('mainAgentCalloutDesc')}
+              </div>
+            </div>
+          </div>
+        ) : null}
         <ToolSetPicker
           tools={tools}
           selected={allowList}
           t={t}
+          isDefault={isDefault}
           onChange={(allow) => onDraftChange({ ...draft, toolFilter: { ...draft.toolFilter, allow } })}
         />
       </div>

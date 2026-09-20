@@ -177,7 +177,7 @@ describe('real cordis probe — orchestrate reactivity + real projection registr
     expect(registry.snapshot(session).values[ORCHESTRATE_PROJECTION_KEY]).toEqual({ mode: 'off' });
   });
 
-  it('no-args /orchestrate is per-turn: no sticky event; the section injects via command/run and drops after the turn', async () => {
+  it('no-args /orchestrate is persistent: appends sticky on event; the section remains active across turns until off', async () => {
     const ctx = new Context();
     const registry = new SessionProjectionRegistry(ctx);
     const commands: Array<{ name: string; handler: (invocation: any) => any }> = [];
@@ -216,26 +216,26 @@ describe('real cordis probe — orchestrate reactivity + real projection registr
         ctx.emit('session/event', this, event);
       },
     };
-    // The commands service appends command/run before invoking the handler;
-    // the followup then opens a turn (turn/start) before the task message.
     session.append('command/run', { name: 'orchestrate', args: '' });
     session.append('turn/start', {});
-    // /orchestrate (no args): per-turn — success, but NO sticky event.
+    // /orchestrate (no args): persistent on event appended.
     expect(orchestrate!.handler({ rawInput: '', agent: { session } }).kind).toBe('success');
-    expect(registry.snapshot(session).values[ORCHESTRATE_PROJECTION_KEY]).toEqual({ mode: 'off' });
-    // The next user message is orchestrated via the command/run scan. (No
-    // roles are configured in this probe, so the section resolves to the
-    // unavailable notice — still a non-empty injection, never a silent drop.)
+    expect(registry.snapshot(session).values[ORCHESTRATE_PROJECTION_KEY]).toEqual({ mode: 'on' });
+    // The next user message is orchestrated.
     session.append('user/message', { content: [{ type: 'text', text: '帮我分析' }] });
     expect(section.text({ agent: { session } })).not.toBe('');
-    // A later unrelated message opens a NEW turn and is NOT orchestrated
-    // (per-turn semantics).
+    // A later turn remains orchestrated (persistent until off).
     session.append('turn/start', {});
     session.append('user/message', { content: [{ type: 'text', text: '再来一个' }] });
+    expect(section.text({ agent: { session } })).not.toBe('');
+
+    // Explicit off turns it off:
+    expect(orchestrate!.handler({ rawInput: 'off', agent: { session } }).kind).toBe('success');
+    expect(registry.snapshot(session).values[ORCHESTRATE_PROJECTION_KEY]).toEqual({ mode: 'off' });
     expect(section.text({ agent: { session } })).toBe('');
   });
 
-  it('/orchestrate <task> queues the task as a follow-up turn and orchestrates it', async () => {
+  it('/orchestrate <task> queues the task as a follow-up turn and enables persistent orchestrate mode', async () => {
     const ctx = new Context();
     const registry = new SessionProjectionRegistry(ctx);
     const commands: Array<{ name: string; handler: (invocation: any) => any }> = [];
@@ -274,12 +274,8 @@ describe('real cordis probe — orchestrate reactivity + real projection registr
         ctx.emit('session/event', this, event);
       },
     };
-    // The commands service appends command/run before invoking the handler;
-    // the followup then opens a turn (turn/start) before the task message.
     session.append('command/run', { name: 'orchestrate', args: ' 分析上周A股走势' });
     session.append('turn/start', {});
-    // The handler queues the task as a follow-up turn (the real agent would
-    // append the user/message and wake the driver — simulated here).
     const agent: any = {
       session,
       followup: (msg: any) => {
@@ -289,13 +285,13 @@ describe('real cordis probe — orchestrate reactivity + real projection registr
     const res = orchestrate!.handler({ rawInput: ' 分析上周A股走势', agent });
     expect(res.kind).toBe('success');
     expect(res.text).toContain('分析上周A股走势');
-    // No sticky event: the projection stays off (per-turn semantics).
-    expect(registry.snapshot(session).values[ORCHESTRATE_PROJECTION_KEY]).toEqual({ mode: 'off' });
-    // The queued follow-up turn is orchestrated via the command/run scan.
+    // Persistent event: the projection is set to on.
+    expect(registry.snapshot(session).values[ORCHESTRATE_PROJECTION_KEY]).toEqual({ mode: 'on' });
+    // The queued follow-up turn is orchestrated.
     expect(section.text({ agent: { session } })).not.toBe('');
-    // A later unrelated message opens a NEW turn and is NOT orchestrated.
+    // A later message also stays orchestrated (persistent mode).
     session.append('turn/start', {});
     session.append('user/message', { content: [{ type: 'text', text: '再来一个' }] });
-    expect(section.text({ agent: { session } })).toBe('');
+    expect(section.text({ agent: { session } })).not.toBe('');
   });
 });

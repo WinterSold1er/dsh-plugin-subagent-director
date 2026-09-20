@@ -8,6 +8,9 @@ import {
   renderOrchestratorRoles,
   renderOrchestratorPrompt,
   buildOrchestratorFrame,
+  buildAgentTeamFrame,
+  renderAgentTeamPrompt,
+  renderAgentTeamSection,
   ORCHESTRATE_VALID_MODES,
   detectOrchestrateRequest,
   extractSessionEvents,
@@ -119,9 +122,39 @@ describe('buildOrchestratorFrame', () => {
   });
 });
 
+describe('buildAgentTeamFrame and renderAgentTeamPrompt', () => {
+  it('buildAgentTeamFrame declares Team Lead identity and restricts hands-on work', () => {
+    const frame = buildAgentTeamFrame('strict');
+    expect(frame).toContain('TEAM LEAD');
+    expect(frame).toContain('spawn_teammate');
+    expect(frame).toContain('team_task_create');
+    expect(frame).toContain('send_message');
+    expect(frame).toContain('wait_agent');
+    expect(frame).toContain('ENFORCED at the tool level');
+  });
+
+  it('buildAgentTeamFrame none enforcement honestly states tool interception is disabled', () => {
+    const frame = buildAgentTeamFrame('none');
+    expect(frame).not.toContain('ENFORCED at the tool level');
+    expect(frame).toContain('Tool interception is disabled in current settings');
+  });
+
+  it('renderAgentTeamPrompt renders roles with spawn_teammate call hints', () => {
+    const prompt = renderAgentTeamPrompt(settings, 'spawn_teammate', 'strict');
+    expect(prompt).toContain('TEAM LEAD');
+    expect(prompt).toContain('spawn_teammate({ role: "dev-role", prompt: "..." })');
+    expect(prompt).toContain('team_task_create');
+  });
+
+  it('renderAgentTeamSection shows notice when no roles are configured', () => {
+    const notice = renderAgentTeamSection({}, 'spawn_teammate', 'strict');
+    expect(notice).toContain('no subagent-director roles are configured');
+  });
+});
+
 describe('ORCHESTRATE_VALID_MODES', () => {
-  it('accepts only on/off', () => {
-    expect(ORCHESTRATE_VALID_MODES).toEqual(['on', 'off']);
+  it('accepts on, off, and agent-team', () => {
+    expect(ORCHESTRATE_VALID_MODES).toEqual(['on', 'off', 'agent-team']);
   });
 });
 
@@ -131,13 +164,31 @@ describe('detectOrchestrateRequest', () => {
     expect(detectOrchestrateRequest('  /orchestrate')).toBe('on');
   });
 
+  it('returns on for /using-subagents (bare, on, or task)', () => {
+    expect(detectOrchestrateRequest('/using-subagents')).toBe('on');
+    expect(detectOrchestrateRequest('  /using-subagents')).toBe('on');
+    expect(detectOrchestrateRequest('/using-subagents on')).toBe('on');
+    expect(detectOrchestrateRequest('/using-subagents 分析上周A股走势')).toBe('on');
+  });
+
+  it('returns off for /using-subagents off and /orchestrate off', () => {
+    expect(detectOrchestrateRequest('/using-subagents off')).toBe('off');
+    expect(detectOrchestrateRequest('/orchestrate off')).toBe('off');
+  });
+
+  it('returns agent-team for /using-agent-team (bare, on, or task)', () => {
+    expect(detectOrchestrateRequest('/using-agent-team')).toBe('agent-team');
+    expect(detectOrchestrateRequest('/using-agent-team on')).toBe('agent-team');
+    expect(detectOrchestrateRequest('/using-agent-team 重构系统')).toBe('agent-team');
+  });
+
+  it('returns off for /using-agent-team off', () => {
+    expect(detectOrchestrateRequest('/using-agent-team off')).toBe('off');
+  });
+
   it('returns on for /orchestrate on (case-insensitive)', () => {
     expect(detectOrchestrateRequest('/orchestrate on')).toBe('on');
     expect(detectOrchestrateRequest('/orchestrate ON')).toBe('on');
-  });
-
-  it('returns off for /orchestrate off', () => {
-    expect(detectOrchestrateRequest('/orchestrate off')).toBe('off');
   });
 
   it('returns on for /orchestrate with task text (the task is orchestrated)', () => {
@@ -145,22 +196,37 @@ describe('detectOrchestrateRequest', () => {
     expect(detectOrchestrateRequest('/orchestrate maybe')).toBe('on');
   });
 
-  it('returns on for 使用orchestrate模式 at the start', () => {
+  it('returns on for subagents natural language forms', () => {
+    expect(detectOrchestrateRequest('使用子代理帮我分析这个项目')).toBe('on');
+    expect(detectOrchestrateRequest('使用子代理')).toBe('on');
+    expect(detectOrchestrateRequest('using subagents')).toBe('on');
+    expect(detectOrchestrateRequest('using-subagents')).toBe('on');
+    expect(detectOrchestrateRequest('using subagents to optimize')).toBe('on');
     expect(detectOrchestrateRequest('使用orchestrate模式帮我分析这个项目')).toBe('on');
     expect(detectOrchestrateRequest('请使用 orchestrate 模式分析')).toBe('on');
     expect(detectOrchestrateRequest('我想使用orchestrate模式')).toBe('on');
-  });
-
-  it('returns on for use orchestrate mode', () => {
     expect(detectOrchestrateRequest('use orchestrate mode to analyze this')).toBe('on');
   });
 
-  it('returns undefined for questions about orchestrate mode', () => {
+  it('returns agent-team for agent-team natural language forms', () => {
+    expect(detectOrchestrateRequest('使用agent-team')).toBe('agent-team');
+    expect(detectOrchestrateRequest('使用 agent-team 模式开发新功能')).toBe('agent-team');
+    expect(detectOrchestrateRequest('使用agent team进行架构设计')).toBe('agent-team');
+    expect(detectOrchestrateRequest('using agent team')).toBe('agent-team');
+    expect(detectOrchestrateRequest('using-agent-team')).toBe('agent-team');
+    expect(detectOrchestrateRequest('use agent team to refactor')).toBe('agent-team');
+  });
+
+  it('returns undefined for questions about orchestrate or agent team mode', () => {
     expect(detectOrchestrateRequest('什么是orchestrate模式')).toBeUndefined();
+    expect(detectOrchestrateRequest('什么是using-subagents')).toBeUndefined();
+    expect(detectOrchestrateRequest('什么是agent-team')).toBeUndefined();
     expect(detectOrchestrateRequest('帮我解释一下使用orchestrate模式的好处')).toBeUndefined();
     expect(detectOrchestrateRequest('请问使用orchestrate模式注意事项')).toBeUndefined();
     expect(detectOrchestrateRequest('请问使用orchestrate模式')).toBeUndefined();
     expect(detectOrchestrateRequest('使用orchestrate模式注意事项')).toBeUndefined();
+    expect(detectOrchestrateRequest('使用子代理注意事项')).toBeUndefined();
+    expect(detectOrchestrateRequest('使用agent-team吗')).toBeUndefined();
   });
 
   it('returns undefined for unrelated text', () => {

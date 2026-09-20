@@ -87,25 +87,21 @@ export type SubagentDirectorKey =
   | 'enforcementLenientDesc'
   | 'enforcementToggleOn'
   | 'enforcementToggleOff'
-  | 'interceptCardHeading'
-  | 'interceptCardHint'
-  | 'interceptToolsLabel'
-  | 'interceptToolsHint'
-  | 'interceptRoundLabel'
-  | 'interceptRoundHint'
-  | 'interceptYes'
-  | 'interceptNo'
-  | 'useSubagents'
-  | 'useSubagentsActiveTitle'
-  | 'useSubagentsInactiveTitle';
+  | 'mainAgentCallout'
+  | 'mainAgentCalloutTitle'
+  | 'mainAgentCalloutDesc'
+  | 'mainAgentToolFilterHint'
+  | 'mainAgentToolFilterNone'
+  | 'mainAgentTools'
+  | 'mainAgentDefaultReadOnly';
 
 /** English dictionary ($subagentDirector). */
 export const en: Record<SubagentDirectorKey, string> = {
   "nav": "Subagent Director",
-  "sectionIntro": "Choose the LLM provider and model each subagent uses, and define role templates that bind a model and persona to a delegation. Only providers/models from the Subagent pool in plugin config (Plugins \u2192 Plugin Config \u2192 Subagent) can be selected.",
+  "sectionIntro": "Configure default model settings and role templates for subagents. The designated default role acts as the Main Agent, defining the allowed tool permissions during orchestration mode.",
   "defaultsHeading": "Default model",
-  "defaultsHint": "Used when a call or role does not name a provider/model.",
-  "noAllowedModels": "No authorized models yet. Select models in the official Subagent model-selection list (plugin settings \u2192 Subagent); picks here are limited to that list.",
+  "defaultsHint": "Used when a delegation call or role does not name a specific provider/model.",
+  "noAllowedModels": "No authorized models yet. Select models in the official Subagent model-selection list (plugin settings → Subagent); picks here are limited to that list.",
   "defaultProvider": "Provider",
   "defaultModel": "Model",
   "defaultReasoningEffort": "Reasoning effort",
@@ -114,8 +110,8 @@ export const en: Record<SubagentDirectorKey, string> = {
   "model": "Model",
   "reasoningEffort": "Reasoning effort",
   "persona": "Persona",
-  "rolesHeading": "Role templates",
-  "rolesHint": "A role binds delegation guidance, a persona, and optionally a provider/model to a subagent.",
+  "rolesHeading": "Role templates & Main Agent permissions",
+  "rolesHint": "A role binds delegation guidance, a persona, model, and tool set to a subagent. The default role serves as the Main Agent, defining tool permissions during orchestration.",
   "addRole": "Add role",
   "emptyRoles": "No role templates yet. Add one to start planning subagent responsibilities.",
   "roleId": "Role id",
@@ -123,7 +119,7 @@ export const en: Record<SubagentDirectorKey, string> = {
   "roleDescription": "Delegation guidance",
   "rolePersona": "Persona",
   "setDefaultRole": "Set as default",
-  "defaultRoleBadge": "Default",
+  "defaultRoleBadge": "Main Agent (Default)",
   "deleteRole": "Delete",
   "confirmDeleteRole": "Delete role “{id}”? Roles referenced by defaultRole will fall back to the plugin default.",
   "removeRoleDone": "Role removed",
@@ -181,25 +177,21 @@ export const en: Record<SubagentDirectorKey, string> = {
   "enforcementLenientDesc": "Per-turn tool intercept: Disabled (prompt-only)",
   "enforcementToggleOn": "Per-turn tool intercept: Enabled",
   "enforcementToggleOff": "Per-turn tool intercept: Disabled",
-  "interceptCardHeading": "Orchestration Tool Intercept",
-  "interceptCardHint": "Control whether to block write and execution tools in orchestrate mode, requiring the main agent to delegate work to subagents.",
-  "interceptToolsLabel": "Intercept tool calls",
-  "interceptToolsHint": "When enabled, disallows the main agent from running write and execution tools directly.",
-  "interceptRoundLabel": "Per-turn orchestration tool intercept",
-  "interceptRoundHint": "When enabled, per-turn orchestration (e.g. using /orchestrate or natural language) also intercepts write and execution tools; when disabled, per-turn is prompt-only.",
-  "interceptYes": "Yes",
-  "interceptNo": "No",
-  "useSubagents": "Use Subagents",
-  "useSubagentsActiveTitle": "Use Subagents (Orchestrator Mode) is active: only allows subagent delegation and intercepts direct tool calls. Click to turn off (/orchestrate off)",
-  "useSubagentsInactiveTitle": "Use Subagents (Orchestrator Mode): only allows subagent delegation and intercepts direct tool calls. Click to turn on (/orchestrate)"
+  "mainAgentCallout": "Main Agent Tool Permissions: When orchestration is active via /using-subagents or /using-agent-team, the main agent may only call the tools selected here; other tools will be intercepted. Defaults to read-only tools if unconfigured.",
+  "mainAgentCalloutTitle": "Main Agent Tool Permissions",
+  "mainAgentCalloutDesc": "When orchestration is active via /using-subagents or /using-agent-team, the main agent may only call the tools selected here; other tools will be intercepted. Defaults to read-only tools if unconfigured.",
+  "mainAgentToolFilterHint": "Main Agent tool permissions configured: only tools selected above may be called in orchestrate mode; other tools will be intercepted.",
+  "mainAgentToolFilterNone": "No tool filter configured: defaults to read-only tools (read/grep/glob etc.) in orchestrate mode.",
+  "mainAgentTools": "Main Agent Tools",
+  "mainAgentDefaultReadOnly": "Read-only tools only (read/grep/glob etc.)"
 };
 
 /** Chinese dictionary. */
 export const zh: Record<SubagentDirectorKey, string> = {
   "nav": "子代理导演",
-  "sectionIntro": "为每个子代理选择 LLM 供应商与模型，并以角色模板把模型与 persona 绑定到每次委派。只能选择插件-插件配置-Subagent池里的提供商-模型。",
+  "sectionIntro": "配置子代理全局默认模型与角色模板。系统中的默认角色即为主 Agent，其工具权限配置直接决定编排模式下主 Agent 允许调用的工具。",
   "defaultsHeading": "默认模型",
-  "defaultsHint": "当某次调用或角色未指定供应商/模型时使用。",
+  "defaultsHint": "当某次委派调用或角色模板未指定具体供应商/模型时使用。",
   "noAllowedModels": "尚未配置已授权的模型。请先在官方 Subagent 模型选择列表（插件设置 → Subagent）中选择模型；此处只能从该列表中选择。",
   "defaultProvider": "供应商",
   "defaultModel": "模型",
@@ -209,8 +201,8 @@ export const zh: Record<SubagentDirectorKey, string> = {
   "model": "模型",
   "reasoningEffort": "推理强度",
   "persona": "人设",
-  "rolesHeading": "角色模板",
-  "rolesHint": "角色把委派指引、persona 与可选的供应商/模型绑定到子代理。",
+  "rolesHeading": "角色模板与主 Agent 权限",
+  "rolesHint": "角色把委派指引、人设与可选的供应商/模型及工具集绑定到子代理。默认角色即为主 Agent，其工具集配置直接决定编排模式下允许调用的工具。",
   "addRole": "添加角色",
   "emptyRoles": "还没有角色模板。添加一个以开始规划子代理职责。",
   "roleId": "角色 id",
@@ -218,7 +210,7 @@ export const zh: Record<SubagentDirectorKey, string> = {
   "roleDescription": "委派指引",
   "rolePersona": "人设",
   "setDefaultRole": "设为默认",
-  "defaultRoleBadge": "默认",
+  "defaultRoleBadge": "主 Agent (默认角色)",
   "deleteRole": "删除",
   "confirmDeleteRole": "删除角色“{id}”？若 defaultRole 引用了它，将回退到插件默认值。",
   "removeRoleDone": "角色已删除",
@@ -276,15 +268,11 @@ export const zh: Record<SubagentDirectorKey, string> = {
   "enforcementLenientDesc": "按轮编排拦截工具调用：已关闭（仅提示）",
   "enforcementToggleOn": "按轮编排拦截工具调用：已开启",
   "enforcementToggleOff": "按轮编排拦截工具调用：已关闭",
-  "interceptCardHeading": "编排工具拦截",
-  "interceptCardHint": "控制纯编排模式下是否在工具层面拦截写和执行类工具调用，强制主代理委派工作给子代理。",
-  "interceptToolsLabel": "拦截工具调用",
-  "interceptToolsHint": "开启后，在编排模式下禁止主代理直接调用写和执行类工具。",
-  "interceptRoundLabel": "按轮编排拦截工具调用",
-  "interceptRoundHint": "开启后，按轮编排（如输入框声明或快捷按钮）同样拦截写和执行工具；关闭后按轮编排仅作提示（不拦截）。",
-  "interceptYes": "是",
-  "interceptNo": "否",
-  "useSubagents": "使用子代理",
-  "useSubagentsActiveTitle": "使用子代理（编排模式）已激活：仅允许调度子代理，拦截直接工具调用。点击关闭（/orchestrate off）",
-  "useSubagentsInactiveTitle": "使用子代理（编排模式）：仅允许调度子代理，拦截直接工具调用。点击开启（/orchestrate）"
+  "mainAgentCallout": "主 Agent 工具权限：当通过 /using-subagents 或 /using-agent-team 开启编排时，主 Agent 仅允许调用此处勾选的工具，其余工具将被拦截。未勾选或留空时默认仅允许只读工具（read/grep/glob 等）。",
+  "mainAgentCalloutTitle": "主 Agent 工具权限",
+  "mainAgentCalloutDesc": "当通过 /using-subagents 或 /using-agent-team 开启编排时，主 Agent 仅允许调用此处勾选的工具，其余工具将被拦截。未勾选或留空时默认仅允许只读工具（read/grep/glob 等）。",
+  "mainAgentToolFilterHint": "已配置主 Agent 工具权限：编排模式下仅允许调用上述勾选的工具，其余工具将被拦截。",
+  "mainAgentToolFilterNone": "未配置工具过滤：编排模式下默认仅允许只读工具（read/grep/glob 等）。",
+  "mainAgentTools": "主 Agent 工具权限",
+  "mainAgentDefaultReadOnly": "仅只读工具 (read/grep/glob 等)"
 };

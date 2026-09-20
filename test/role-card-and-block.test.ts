@@ -143,6 +143,54 @@ describe('RoleCard component', () => {
     const saveMatch = html.match(/<button[^>]*>Save<\/button>/);
     expect(saveMatch?.[0]).not.toContain('disabled=""');
   });
+
+  it('renders Main Agent tool permission metadata when isDefault is true', () => {
+    const defaultRoleWithTools: StoredRole = {
+      ...sampleRole,
+      toolFilter: { allow: ['bash', 'read'] },
+    };
+    const htmlWithTools = renderToStaticMarkup(
+      React.createElement(RoleCard, {
+        id: 'main-agent',
+        role: defaultRoleWithTools,
+        isDefault: true,
+        routes: mockRoutes,
+        tools: mockTools,
+        existingRoleIds: new Set(['main-agent']),
+        writable: true,
+        t,
+        onSave: vi.fn(),
+        onDelete: vi.fn(),
+        onSetDefault: vi.fn(),
+      }),
+    );
+    expect(htmlWithTools).toContain(t('defaultRoleBadge'));
+    expect(htmlWithTools).toContain(t('mainAgentTools'));
+    expect(htmlWithTools).toContain('bash, read');
+
+    const defaultRoleNoTools: StoredRole = {
+      ...sampleRole,
+      toolFilter: { allow: [] },
+    };
+    const htmlNoTools = renderToStaticMarkup(
+      React.createElement(RoleCard, {
+        id: 'main-agent',
+        role: defaultRoleNoTools,
+        isDefault: true,
+        routes: mockRoutes,
+        tools: mockTools,
+        existingRoleIds: new Set(['main-agent']),
+        writable: true,
+        t,
+        onSave: vi.fn(),
+        onDelete: vi.fn(),
+        onSetDefault: vi.fn(),
+      }),
+    );
+    expect(htmlNoTools).toContain(t('defaultRoleBadge'));
+    expect(htmlNoTools).toContain(t('mainAgentTools'));
+    expect(htmlNoTools).toContain(t('mainAgentDefaultReadOnly'));
+  });
 });
 
 describe('Role editing and validation flow', () => {

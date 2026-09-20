@@ -1,6 +1,5 @@
 /** Shared inline styles + design tokens for the Subagent Director settings pages.
- * M2 intentionally does not introduce a CSS Modules pipeline (documented
- * design deviation): style comes from design tokens and inline styles. */
+ * Style comes from design tokens and clean inline styles. */
 import type { CSSProperties } from 'react';
 
 export const token = {
@@ -24,69 +23,83 @@ export const rowStyle: CSSProperties = {
 export const fieldLabelStyle: CSSProperties = {
   color: token.labelSecondary,
   fontSize: 12,
+  fontWeight: 500,
   lineHeight: '16px',
 };
 
 export const selectStyle: CSSProperties = {
-  height: 30,
-  borderRadius: 6,
+  height: 32,
+  borderRadius: 8,
   border: '1px solid ' + token.border,
   background: token.bgLayer1,
   color: token.labelPrimary,
   font: 'inherit',
   fontSize: 13,
-  padding: '0 8px',
+  padding: '0 10px',
   outline: 'none',
+  boxSizing: 'border-box',
 };
 
 export const textInputStyle: CSSProperties = {
-  height: 30,
-  borderRadius: 6,
+  height: 32,
+  borderRadius: 8,
   border: '1px solid ' + token.border,
   background: token.bgLayer1,
   color: token.labelPrimary,
   font: 'inherit',
   fontSize: 13,
-  padding: '0 8px',
+  padding: '0 10px',
   outline: 'none',
+  boxSizing: 'border-box',
 };
 
 export const textAreaStyle: CSSProperties = {
-  borderRadius: 6,
+  borderRadius: 8,
   border: '1px solid ' + token.border,
   background: token.bgLayer1,
   color: token.labelPrimary,
   font: 'inherit',
   fontSize: 13,
-  lineHeight: '18px',
-  padding: '6px 8px',
+  lineHeight: '20px',
+  padding: '8px 10px',
   resize: 'vertical',
-  minHeight: 56,
+  minHeight: 64,
   outline: 'none',
+  boxSizing: 'border-box',
 };
 
 export const primaryButtonStyle: CSSProperties = {
-  height: 28,
-  borderRadius: 6,
+  height: 30,
+  borderRadius: 8,
   border: '1px solid ' + token.accent,
   background: token.accent,
   color: '#fff',
   font: 'inherit',
   fontSize: 13,
+  fontWeight: 500,
   cursor: 'pointer',
-  padding: '0 12px',
+  padding: '0 14px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
 };
 
 export const ghostButtonStyle: CSSProperties = {
-  height: 28,
-  borderRadius: 6,
+  height: 30,
+  borderRadius: 8,
   border: '1px solid ' + token.border,
   background: 'transparent',
   color: token.labelPrimary,
   font: 'inherit',
   fontSize: 13,
+  fontWeight: 500,
   cursor: 'pointer',
   padding: '0 12px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
 };
 
 export const dangerButtonStyle: CSSProperties = {
@@ -98,19 +111,97 @@ export const dangerButtonStyle: CSSProperties = {
 export const cardStyle: CSSProperties = {
   border: '1px solid ' + token.border,
   background: token.bgLayer3,
-  borderRadius: 10,
-  padding: 12,
+  borderRadius: 12,
+  padding: '16px 18px',
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
+  gap: 14,
   minWidth: 0,
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+};
+
+export const roleCardStyle: CSSProperties = {
+  border: '1px solid ' + token.border,
+  background: token.bgLayer1,
+  borderRadius: 10,
+  padding: '14px 16px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  minWidth: 0,
+  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.02)',
+};
+
+export const roleCardDefaultStyle: CSSProperties = {
+  ...roleCardStyle,
+  border: '1px solid ' + token.accent,
+  boxShadow: '0 0 0 1px ' + token.accent + '33, 0 2px 6px rgba(0, 0, 0, 0.04)',
+};
+
+export const mainAgentBadgeStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  padding: '2px 9px',
+  borderRadius: 9999,
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: '16px',
+  letterSpacing: '0.01em',
+  color: token.accent,
+  background: token.bgLayer1,
+  border: '1px solid ' + token.accent,
+  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+};
+
+export const badgeDotStyle: CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+  backgroundColor: 'currentColor',
+  display: 'inline-block',
+  flexShrink: 0,
+};
+
+export const calloutBannerStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 10,
+  padding: '10px 14px',
+  borderRadius: 8,
+  background: token.bgLayer1,
+  border: '1px solid ' + token.border,
+  borderLeft: '3px solid ' + token.accent,
+};
+
+export const metaChipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '3px 8px',
+  borderRadius: 6,
+  background: token.bgLayer3,
+  border: '1px solid ' + token.border,
+  fontSize: 12,
+  lineHeight: '16px',
+  color: token.labelSecondary,
+};
+
+export const idBadgeStyle: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+  fontSize: 11,
+  padding: '1px 6px',
+  borderRadius: 4,
+  background: token.bgLayer1,
+  border: '1px solid ' + token.border,
+  color: token.labelTertiary,
 };
 
 export const sectionWidth: CSSProperties = {
   width: '100%',
-  maxWidth: 760,
+  maxWidth: 800,
   display: 'flex',
   flexDirection: 'column',
-  gap: 16,
+  gap: 18,
   color: token.labelPrimary,
 };

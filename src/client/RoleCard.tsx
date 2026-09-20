@@ -9,10 +9,15 @@ import type { SubagentDirectorKey } from './locales.js';
 import { type RoleDraft, type StoredRole, validateRoleSubmission } from './store-logic.js';
 import { RoleFormFields } from './RoleFormFields.js';
 import {
-  cardStyle,
+  badgeDotStyle,
   dangerButtonStyle,
   ghostButtonStyle,
+  idBadgeStyle,
+  mainAgentBadgeStyle,
+  metaChipStyle,
   primaryButtonStyle,
+  roleCardDefaultStyle,
+  roleCardStyle,
   token,
 } from './ui.js';
 
@@ -21,7 +26,7 @@ export interface RoleCardProps {
   id: string;
   /** Persisted role value. */
   role: StoredRole;
-  /** Whether this role is the defaultRole. */
+  /** Whether this role is the defaultRole (Main Agent). */
   isDefault: boolean;
   /** Authorized routes (the only selectable provider/model pairs). */
   routes: readonly DirectorAllowedRoute[];
@@ -123,10 +128,15 @@ export function RoleCard({
 
   if (editing) {
     return (
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('roleDisplayName')}</strong>
-          {isDefault ? <span style={{ color: token.accent, fontSize: 12 }}>{t('defaultRoleBadge')}</span> : null}
+      <div style={isDefault ? roleCardDefaultStyle : roleCardStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <strong style={{ color: token.labelPrimary, fontSize: 15, fontWeight: 600 }}>{t('roleDisplayName')}</strong>
+          {isDefault ? (
+            <span style={mainAgentBadgeStyle}>
+              <span style={badgeDotStyle} />
+              {t('defaultRoleBadge')}
+            </span>
+          ) : null}
         </div>
         <RoleFormFields
           id={cardId}
@@ -144,9 +154,10 @@ export function RoleCard({
           tools={tools}
           t={t}
           disabled={!writable || busy}
+          isDefault={isDefault}
         />
         {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
           <button style={ghostButtonStyle} disabled={busy} onClick={() => setEditing(false)}>{t('cancel')}</button>
         </div>
@@ -155,28 +166,41 @@ export function RoleCard({
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{role.displayName || id}</strong>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: token.labelTertiary, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{id}</span>
-          {isDefault ? <span style={{ color: token.accent, fontSize: 12 }}>{t('defaultRoleBadge')}</span> : null}
+    <div style={isDefault ? roleCardDefaultStyle : roleCardStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <strong style={{ color: token.labelPrimary, fontSize: 15, fontWeight: 600 }}>{role.displayName || id}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={idBadgeStyle}>{id}</span>
+          {isDefault ? (
+            <span style={mainAgentBadgeStyle}>
+              <span style={badgeDotStyle} />
+              {t('defaultRoleBadge')}
+            </span>
+          ) : null}
         </div>
       </div>
       {role.description ? (
-        <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{role.description}</p>
+        <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '19px' }}>{role.description}</p>
       ) : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <Metadata label={t('provider')} value={role.provider} />
         <Metadata label={t('model')} value={role.model} />
         <Metadata label={t('reasoningEffort')} value={role.reasoningEffort} />
         {role.persona ? <Metadata label={t('persona')} value={role.persona} /> : null}
-        {role.toolFilter?.allow?.length ? (
-          <Metadata label={t('toolFilter')} value={role.toolFilter.allow.join(', ')} />
-        ) : null}
+        {isDefault ? (
+          role.toolFilter?.allow?.length ? (
+            <Metadata label={t('mainAgentTools')} value={role.toolFilter.allow.join(', ')} />
+          ) : (
+            <Metadata label={t('mainAgentTools')} value={t('mainAgentDefaultReadOnly')} />
+          )
+        ) : (
+          role.toolFilter?.allow?.length ? (
+            <Metadata label={t('toolFilter')} value={role.toolFilter.allow.join(', ')} />
+          ) : null
+        )}
       </div>
       {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
         <button style={ghostButtonStyle} disabled={!writable || busy} onClick={beginEdit}>{t('edit')}</button>
         <button style={ghostButtonStyle} disabled={!writable || busy || isDefault} onClick={() => (void onSetDefault(), undefined)}>{t('setDefaultRole')}</button>
         <button style={dangerButtonStyle} disabled={!writable || busy} onClick={remove}>{t('deleteRole')}</button>
@@ -188,8 +212,9 @@ export function RoleCard({
 function Metadata({ label, value }: { label: string; value: string | undefined }): JSX.Element | null {
   if (!value) return null;
   return (
-    <span style={{ color: token.labelSecondary, fontSize: 12 }}>
-      {label}: <span style={{ color: token.labelPrimary }}>{value}</span>
+    <span style={metaChipStyle}>
+      <span>{label}:</span>
+      <strong style={{ color: token.labelPrimary, fontWeight: 500 }}>{value}</strong>
     </span>
   );
 }

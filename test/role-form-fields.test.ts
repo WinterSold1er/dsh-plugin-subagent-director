@@ -126,6 +126,61 @@ describe('RoleFormFields component rendering', () => {
     );
     expect(zhHtml).toContain('placeholder="(仅作建议)"');
   });
+
+  it('renders prominent callout banner and Main Agent hints when isDefault is true', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(RoleFormFields, {
+        id: 'lead-dev',
+        onIdChange: vi.fn(),
+        draft: defaultDraft,
+        onDraftChange: vi.fn(),
+        routes: mockRoutes,
+        tools: mockTools,
+        t,
+        isDefault: true,
+      }),
+    );
+
+    expect(html).toContain(t('mainAgentCalloutTitle'));
+    expect(html).toContain(t('mainAgentCalloutDesc'));
+    expect(html).toContain(t('mainAgentToolFilterHint'));
+  });
+
+  it('renders mainAgentToolFilterNone when isDefault is true and no tools selected', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(RoleFormFields, {
+        id: 'lead-dev',
+        onIdChange: vi.fn(),
+        draft: { ...defaultDraft, toolFilter: { allow: [] } },
+        onDraftChange: vi.fn(),
+        routes: mockRoutes,
+        tools: mockTools,
+        t,
+        isDefault: true,
+      }),
+    );
+
+    expect(html).toContain(t('mainAgentCalloutTitle'));
+    expect(html).toContain(t('mainAgentToolFilterNone'));
+  });
+
+  it('does not render callout banner when isDefault is false', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(RoleFormFields, {
+        id: 'worker-subagent',
+        onIdChange: vi.fn(),
+        draft: defaultDraft,
+        onDraftChange: vi.fn(),
+        routes: mockRoutes,
+        tools: mockTools,
+        t,
+        isDefault: false,
+      }),
+    );
+
+    expect(html).not.toContain(t('mainAgentCalloutTitle'));
+    expect(html).toContain('Restrict the subagent to these tools');
+  });
 });
 
 describe('cascadeProviderChange logic', () => {

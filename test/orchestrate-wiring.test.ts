@@ -366,7 +366,7 @@ describe('applyOrchestrate — per-turn detection', () => {
 });
 
 describe('applyOrchestrate — command handler', () => {
-  it('no-args /orchestrate is per-turn: success, no sticky event appended', () => {
+  it('no-args /using-subagents appends persistent mode on event', () => {
     const { ctx, registeredCommands } = makeFakeCtx();
     applyOrchestrate(ctx, getSettings, toolName);
     const handler = registeredCommands[0].handler;
@@ -376,8 +376,8 @@ describe('applyOrchestrate — command handler', () => {
       agent: { session: { append: (t: string, d: any) => appended.push([t, d]) } },
     });
     expect(res.kind).toBe('success');
-    expect(res.text).toContain('on for this turn');
-    expect(appended).toEqual([]);
+    expect(res.text).toContain('persistent');
+    expect(appended).toEqual([[ORCHESTRATE_EVENT_TYPE, { mode: 'on' }]]);
   });
 
   it('/orchestrate on appends the sticky event and reports persistent mode', () => {
@@ -410,21 +410,55 @@ describe('applyOrchestrate — command handler', () => {
     applyOrchestrate(ctx, getSettings, toolName);
     const handler = registeredCommands[0].handler;
     const followedUp: any[] = [];
+    const appended: any[] = [];
     const res = handler({
       rawInput: ' 分析上周A股走势',
       agent: {
-        session: { append: () => {} },
+        session: { append: (t: string, d: any) => appended.push([t, d]) },
         followup: (msg: any) => followedUp.push(msg),
       },
     });
     expect(res.kind).toBe('success');
-    expect(res.text).toContain('on for this turn');
+    expect(res.text).toContain('persistent');
     expect(res.text).toContain('分析上周A股走势');
+    expect(appended).toEqual([[ORCHESTRATE_EVENT_TYPE, { mode: 'on' }]]);
     expect(followedUp).toHaveLength(1);
     const msg = followedUp[0];
     expect(msg.role).toBe('user');
     expect(msg.content).toEqual([{ type: 'text', text: '分析上周A股走势' }]);
     expect(msg.source).toEqual({ kind: 'user' });
+  });
+
+  it('/using-agent-team appends persistent agent-team event and accepts task queueing', () => {
+    const { ctx, registeredCommands } = makeFakeCtx();
+    applyOrchestrate(ctx, getSettings, toolName);
+    const agentTeamHandler = registeredCommands[2].handler;
+    const appended: any[] = [];
+    const res = agentTeamHandler({
+      rawInput: '',
+      agent: { session: { append: (t: string, d: any) => appended.push([t, d]) } },
+    });
+    expect(res.kind).toBe('success');
+    expect(res.text).toContain('Agent-team mode: on');
+    expect(appended).toEqual([[ORCHESTRATE_EVENT_TYPE, { mode: 'agent-team' }]]);
+
+    const followedUp: any[] = [];
+    const taskRes = agentTeamHandler({
+      rawInput: '重构系统架构',
+      agent: {
+        session: { append: (t: string, d: any) => appended.push([t, d]) },
+        followup: (msg: any) => followedUp.push(msg),
+      },
+    });
+    expect(taskRes.kind).toBe('success');
+    expect(taskRes.text).toContain('task queued: "重构系统架构"');
+    expect(followedUp).toHaveLength(1);
+
+    const offRes = agentTeamHandler({
+      rawInput: 'off',
+      agent: { session: { append: (t: string, d: any) => appended.push([t, d]) } },
+    });
+    expect(offRes.text).toContain('Agent-team mode: off');
   });
 
   it('returns an honest error when the agent cannot queue a follow-up turn', () => {
@@ -627,8 +661,10 @@ describe('applyOrchestrate — command registration is reactive (delayed command
     expect(registeredCommands).toHaveLength(0);
     // Host mounts the commands service later → the ctx.inject callback fires.
     mountCommands();
-    expect(registeredCommands).toHaveLength(1);
-    expect(registeredCommands[0].name).toBe('orchestrate');
+    expect(registeredCommands).toHaveLength(3);
+    expect(registeredCommands[0].name).toBe('using-subagents');
+    expect(registeredCommands[1].name).toBe('orchestrate');
+    expect(registeredCommands[2].name).toBe('using-agent-team');
   });
 
   it('command handler works after the commands service arrives (full happy path)', () => {

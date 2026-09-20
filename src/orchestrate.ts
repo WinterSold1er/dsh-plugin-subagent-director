@@ -51,15 +51,18 @@ export const ORCHESTRATE_SECTION_ORDER = 55;
 /** Per-session projection key holding the orchestrator on/off state. */
 export const ORCHESTRATE_PROJECTION_KEY = 'orchestrate';
 
-/** Session event type emitted when the mode changes. */
+/** Session event type emitted when the orchestrate mode changes. */
 export const ORCHESTRATE_EVENT_TYPE = 'orchestrate/change';
 
+/** Session event type emitted when the agent-team mode changes. */
+export const AGENT_TEAM_EVENT_TYPE = 'agent-team/change';
+
 /** Accepted mode values. */
-export const ORCHESTRATE_VALID_MODES = ['on', 'off'] as const;
+export const ORCHESTRATE_VALID_MODES = ['on', 'off', 'agent-team'] as const;
 export type OrchestrateMode = (typeof ORCHESTRATE_VALID_MODES)[number];
 
 /** Per-turn orchestrate request parsed from one user message. */
-export type OrchestrateRequest = 'on' | 'off' | undefined;
+export type OrchestrateRequest = 'on' | 'off' | 'agent-team' | undefined;
 
 /**
  * Safe helper to extract session events across diverse Session implementations.
@@ -86,32 +89,53 @@ export function extractSessionEvents(session: unknown): readonly any[] | undefin
 }
 
 /**
- * Detect whether a user message requests pure-orchestrator mode for this turn.
- * Slash form: `/orchestrate` — `off` → off; no args, `on`, or any task text
- * (e.g. `/orchestrate 分析上周A股走势`) → on.
- * Natural-language form (case-insensitive, anchored at the start with an
- * optional politeness prefix so questions like 什么是orchestrate模式 do not
- * false-positive): 使用orchestrate模式 / 使用 orchestrate mode / use orchestrate mode.
+ * Detect whether a user message requests subagents orchestrator mode or agent-team mode.
+ * Slash forms:
+ *   - `/using-subagents` or `/orchestrate`: `off` -> off; else -> on.
+ *   - `/using-agent-team`: `off` -> off; else -> agent-team.
+ * Natural-language forms (case-insensitive, anchored at the start with optional politeness prefix):
+ *   - Agent-team: 使用agent-team, using agent team, using-agent-team, 使用 agent team 模式, etc. -> 'agent-team'
+ *   - Subagents: 使用子代理, using subagents, using-subagents, 使用orchestrate模式, use orchestrate mode, etc. -> 'on'
  */
 export function detectOrchestrateRequest(text: string): OrchestrateRequest {
   const trimmed = text.trimStart();
-  const slash = trimmed.match(/^\/orchestrate(?:\s+(\S+))?/i);
-  if (slash) {
-    const arg = (slash[1] ?? '').trim().toLowerCase();
+
+  // 1. Slash commands
+  const slashUsingSubagents = trimmed.match(/^\/(?:using-subagents|orchestrate)(?:\s+(\S+))?/i);
+  if (slashUsingSubagents) {
+    const arg = (slashUsingSubagents[1] ?? '').trim().toLowerCase();
     if (arg === 'off') return 'off';
     return 'on';
   }
+
+  const slashUsingAgentTeam = trimmed.match(/^\/using-agent-team(?:\s+(\S+))?/i);
+  if (slashUsingAgentTeam) {
+    const arg = (slashUsingAgentTeam[1] ?? '').trim().toLowerCase();
+    if (arg === 'off') return 'off';
+    return 'agent-team';
+  }
+
   // Exclude question forms (e.g. 请问..., 什么是..., 如何...)
   if (/^(请问|什么是|怎么|如何|怎样)/i.test(trimmed)) return undefined;
-  // Natural language form: negative lookahead to exclude "请问" and trailing question words like 注意事项
+
+  // 2. Agent-Team natural language matching
   if (
-    /^(请(?!问)|麻烦|麻烦你|帮我|请帮我|我想|我要)?\s*使用\s*orchestrate\s*(模式|mode)(?!.*?(?:注意事项|区别|优缺点|特点|好不好|怎么样|吗|？|\?))(\s*[:：]|\s*.*$)/i.test(
+    /^(?:请(?!问)|麻烦|麻烦你|帮我|请帮我|我想|我要)?\s*(?:使用\s*(?:agent[- ]team|智能体团队)(?:\s*(?:模式|mode))?|using\s*agent[- ]team|using-agent-team|use\s+agent[- ]team(?:\s+mode)?)(?!.*?(?:注意事项|区别|优缺点|特点|好不好|怎么样|吗|？|\?))(?:\s*[:：]|\s*.*$|$)/i.test(
+      trimmed,
+    )
+  ) {
+    return 'agent-team';
+  }
+
+  // 3. Subagents natural language matching
+  if (
+    /^(?:请(?!问)|麻烦|麻烦你|帮我|请帮我|我想|我要)?\s*(?:使用\s*(?:子代理|orchestrate)(?:\s*(?:模式|mode))?|using\s*subagents|using-subagents|use\s+subagents|use\s+orchestrate(?:\s+mode)?)(?!.*?(?:注意事项|区别|优缺点|特点|好不好|怎么样|吗|？|\?))(?:\s*[:：]|\s*.*$|$)/i.test(
       trimmed,
     )
   ) {
     return 'on';
   }
-  if (/^use\s+orchestrate\s+mode/i.test(trimmed)) return 'on';
+
   return undefined;
 }
 
@@ -144,6 +168,7 @@ interface OrchestrateState {
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     'orchestrate/change': { mode: OrchestrateMode };
+    'agent-team/change': { mode?: OrchestrateMode };
   }
 }
 
@@ -251,11 +276,66 @@ export function renderOrchestratorPrompt(settings: SubagentDirectorSettings, too
  * @param settings - current resolved settings snapshot.
  * @param toolName - the configured model-facing delegation tool name.
  */
-function renderOrchestratorSection(settings: SubagentDirectorSettings, toolName: string, enforcement: OrchestrateEnforcement): string {
+export function renderOrchestratorSection(settings: SubagentDirectorSettings, toolName: string, enforcement: OrchestrateEnforcement): string {
   const roles = settings.roles ?? {};
   const hasRoles = Object.values(roles).some((role) => role !== undefined);
   if (!hasRoles) return renderOrchestratorUnavailableNotice(toolName);
   return renderOrchestratorPrompt(settings, toolName, enforcement);
+}
+
+/**
+ * Build the data-independent framing of the Agent-Team Lead prompt.
+ */
+export function buildAgentTeamFrame(enforcement: OrchestrateEnforcement = 'strict'): string {
+  const enforcementSentence =
+    enforcement === 'none'
+      ? 'Tool interception is disabled in current settings; strictly follow team lead rules at prompt level.'
+      : 'This contract is ENFORCED at the tool level: any disallowed tool you call is blocked by the harness (you will see a BLOCKED result), and retrying it will keep failing.';
+
+  return `You are the TEAM LEAD of an Agent Team. Your role is strictly leadership, task breakdown, teammate coordination, and synthesis.
+You must NEVER edit code, write files, or execute commands yourself — ${enforcementSentence}
+You MUST delegate all execution, coding, testing, and research tasks to teammates.
+
+Core Team Lead responsibilities and workflow:
+1. Team Lead Identity: You are the Lead. Do NOT perform implementation, edit files, or execute shell commands directly.
+2. Dispatch Teammates: Use \`spawn_teammate\` to dispatch specialized teammates for specific subtasks.
+3. Task Board & Tracking: Use \`team_task_create\` to establish the project task board and backlog. Use \`team_task_update\`, \`team_task_get\`, and \`team_task_list\` to track task lifecycle.
+4. Coordination & Steering: Coordinate teammates using \`send_message\` (to guide or assign), \`list_agents\` (to inspect teammates and status), \`wait_agent\` (to synchronize when dependencies finish), and \`interrupt_agent\` (to cancel or redirect).
+5. Final Reporting: Synthesize deliverables from all teammates and present the final comprehensive report to the user.`;
+}
+
+/**
+ * Assemble the full Agent-Team prompt (framing + dynamic role list).
+ */
+export function renderAgentTeamPrompt(
+  settings: SubagentDirectorSettings,
+  toolName: string,
+  enforcement: OrchestrateEnforcement = 'strict',
+): string {
+  const frame = buildAgentTeamFrame(enforcement);
+  const roles = renderOrchestratorRoles(settings, 'spawn_teammate');
+  return `${frame}\n\nAvailable Roles for Teammates:\n${roles}\n\nTeam Lead Rules:
+1. Only dispatch, track, and coordinate. Forbid doing the work yourself.
+2. Initialize and maintain the task board: define clear items with \`team_task_create\`.
+3. Independent tasks -> dispatch teammates concurrently via \`spawn_teammate\`.
+4. Dependent tasks -> wait for prior teammates via \`wait_agent\` before spawning the next stage.
+5. Communication -> send explicit, self-contained briefs via \`send_message\`.
+6. Final verification -> gather all reports from teammates, verify acceptance criteria, and present a complete summary to the user.
+7. A \`BLOCKED\` tool result is the harness enforcing this contract — do not retry blocked tools; delegate to teammates via \`spawn_teammate\` instead.`;
+}
+
+/**
+ * Full agent-team prompt when roles are configured, else the short unavailable notice.
+ */
+export function renderAgentTeamSection(
+  settings: SubagentDirectorSettings,
+  toolName: string,
+  enforcement: OrchestrateEnforcement,
+): string {
+  const roles = settings.roles ?? {};
+  const hasRoles = Object.values(roles).some((role) => role !== undefined);
+  if (!hasRoles) return renderOrchestratorUnavailableNotice('spawn_teammate');
+  return renderAgentTeamPrompt(settings, toolName, enforcement);
 }
 
 /**
@@ -307,12 +387,17 @@ function recentOrchestrateCommandRun(session: any): OrchestrateRequest {
   if (!Array.isArray(events)) return undefined;
   let turnStart = -1;
   let cmdSeq = -1;
+  let cmdName: string | undefined;
   let cmdArgs: string | undefined;
   for (const ev of events) {
     if (!ev || typeof ev.seq !== 'number') continue;
     if (ev.type === 'turn/start') turnStart = ev.seq;
-    if (ev.type === 'command/run' && ev.data?.name === 'orchestrate') {
+    if (
+      ev.type === 'command/run' &&
+      (ev.data?.name === 'using-subagents' || ev.data?.name === 'orchestrate' || ev.data?.name === 'using-agent-team')
+    ) {
       cmdSeq = ev.seq;
+      cmdName = ev.data.name;
       cmdArgs = ev.data.args;
     }
   }
@@ -344,8 +429,7 @@ function recentOrchestrateCommandRun(session: any): OrchestrateRequest {
 
   const arg = (cmdArgs ?? '').trim().toLowerCase();
   if (arg === 'off') return 'off';
-  // '' (bare), 'on', or task text (e.g. 分析上周A股走势 — the handler queued
-  // it as a follow-up turn) all mark this turn orchestrated.
+  if (cmdName === 'using-agent-team') return 'agent-team';
   return 'on';
 }
 
@@ -354,9 +438,9 @@ function recentOrchestrateCommandRun(session: any): OrchestrateRequest {
  * objects that may carry the `orchestrate/change` event(s). Shared by the
  * system-prompt section (prompt injection) and the tool guard (enforcement),
  * so the two can never diverge on which session is in orchestrate mode.
- * Returns 'on' as soon as any candidate says so; otherwise the first known
- * value; `undefined` when no candidate yields a value (callers must treat
- * that as "not on" and warn — never silently pretend).
+ * Returns 'on' or 'agent-team' as soon as any candidate says so; otherwise
+ * the first known value; `undefined` when no candidate yields a value (callers
+ * must treat that as "not on" and warn — never silently pretend).
  * @param projections - the live sessionProjections service (or undefined).
  * @param sessionCandidates - session objects to probe, most-canonical first.
  * @param warn - optional sink for per-candidate projection errors.
@@ -377,7 +461,7 @@ export function resolveOrchestrateMode(
         const value = snap?.values?.[ORCHESTRATE_PROJECTION_KEY];
         if (value && typeof value.mode === 'string') {
           const m = value.mode as OrchestrateMode;
-          if (m === 'on') return 'on';
+          if (m === 'on' || m === 'agent-team') return m;
           if (resolved === undefined) resolved = m;
         }
       } catch (err) {
@@ -398,10 +482,10 @@ export function resolveOrchestrateMode(
     if (Array.isArray(events) && events.length > 0) {
       for (let i = events.length - 1; i >= 0; i--) {
         const ev = events[i];
-        if (ev && ev.type === ORCHESTRATE_EVENT_TYPE) {
+        if (ev && (ev.type === ORCHESTRATE_EVENT_TYPE || ev.type === AGENT_TEAM_EVENT_TYPE)) {
           const mode = ev.data?.mode;
-          if (mode === 'on' || mode === 'off') {
-            if (mode === 'on') return 'on';
+          if (mode === 'on' || mode === 'off' || mode === 'agent-team') {
+            if (mode === 'on' || mode === 'agent-team') return mode;
             if (resolved === undefined) resolved = mode;
             break;
           }
@@ -436,12 +520,13 @@ export function applyOrchestrate(
   toolName: string,
   options?: { readOnlyTools?: readonly string[]; enforcement?: OrchestrateEnforcement; getEnforcement?: () => OrchestrateEnforcement },
 ): void {
-  // Register our event type on the shared KNOWN set so session logs carrying
-  // `orchestrate/change` load in any boot that mounts this plugin.
+  // Register our event types on the shared KNOWN set so session logs carrying
+  // `orchestrate/change` or `agent-team/change` load in any boot that mounts this plugin.
   // The shared set is a mutable Set at runtime; its exported type is
   // ReadonlySet, so we widen to Set<string> for the add call.
   try {
     (KNOWN_SESSION_EVENT_TYPES as Set<string>).add(ORCHESTRATE_EVENT_TYPE);
+    (KNOWN_SESSION_EVENT_TYPES as Set<string>).add(AGENT_TEAM_EVENT_TYPE);
   } catch (err) {
     ctx.logger.warn('[orchestrate] could not register event type:', (err as Error)?.message);
   }
@@ -459,7 +544,7 @@ export function applyOrchestrate(
 
   const missing = (): void =>
     ctx.logger.warn(
-      '[orchestrate] sessionProjections service is missing on this host — the /orchestrate command will NOT take effect (no projection registered, orchestrator prompt will not inject). Provide the dsh-session-projection sessionProjections service to enable orchestrator mode.',
+      '[orchestrate] sessionProjections service is missing on this host — the /using-subagents command will NOT take effect (no projection registered, orchestrator prompt will not inject). Provide the dsh-session-projection sessionProjections service to enable orchestrator mode.',
     );
 
   const registerProjection = (sp: SessionProjectionRegistry): void => {
@@ -479,10 +564,18 @@ export function applyOrchestrate(
       stateSchema: z.object({ mode: z.enum(ORCHESTRATE_VALID_MODES) }),
       init: (): OrchestrateState => ({ mode: 'off' }),
       apply: (state: OrchestrateState, event: SessionEvent): OrchestrateState => {
-        if (!event || event.type !== ORCHESTRATE_EVENT_TYPE) return state;
-        const mode = event.data.mode;
-        if (!ORCHESTRATE_VALID_MODES.includes(mode) || state.mode === mode) return state;
-        return { mode };
+        if (!event) return state;
+        if (event.type === ORCHESTRATE_EVENT_TYPE) {
+          const mode = event.data?.mode;
+          if (!ORCHESTRATE_VALID_MODES.includes(mode) || state.mode === mode) return state;
+          return { mode };
+        }
+        if (event.type === AGENT_TEAM_EVENT_TYPE) {
+          const mode = event.data?.mode === 'off' ? 'off' : 'agent-team';
+          if (state.mode === mode) return state;
+          return { mode };
+        }
+        return state;
       },
       wire: {
         viewSchema: z.object({ mode: z.enum(ORCHESTRATE_VALID_MODES) }),
@@ -514,95 +607,156 @@ export function applyOrchestrate(
     });
   }
 
-  // Register the `/orchestrate` slash command *reactively* through a
-  // `ctx.inject` child fiber (the dsh-plan-mode precedent). `commands` is NOT a
-  // required entry-inject: standard profiles mount it via dsh-base (so the
-  // child fiber activates immediately there), but non-dsh-base assemblies (ACP
-  // hosts, UI-less demo spines, custom harnesses) may never provide it, and a
-  // required inject would leave the whole main entry PENDING on those hosts —
-  // the core delegation features would never load. The child-fiber shape also
-  // recovers from a host that mounts `commands` slightly after `apply`. The
-  // handler reads `projections` from the closure, so command availability and
-  // projection availability are decoupled: the handler still refuses honestly
-  // (with a warning) if the projection service never came up.
-  // The child fiber is owned by this plugin's fiber lifecycle and unloads
-  // with the plugin — never wrap it in ctx.effect (cordis effects run their
-  // callback immediately and treat the return value as the disposer, so
-  // `ctx.effect(() => fiber.dispose())` would unload the child at birth;
-  // pinned by the real-cordis probe in test/orchestrate-cordis.test.ts).
+  // Register commands *reactively* through a `ctx.inject` child fiber.
   ctx.inject(['commands'], (injectedCtx: Context) => {
     const commands: any = injectedCtx.get('commands');
+
+    const handleSubagentsCommand = (invocation: any, cmdName: string) => {
+      const raw = (invocation.rawInput || '').trim();
+      const lower = raw.toLowerCase();
+
+      if (projections === undefined) {
+        missing();
+        return {
+          kind: 'error',
+          text:
+            `Orchestrator mode was NOT applied: the sessionProjections service is missing on this host, so /${cmdName} has no effect and the orchestrator prompt will not inject. ` +
+            `Provide the dsh-session-projection sessionProjections service to enable orchestrator mode.`,
+        };
+      }
+      const agent = invocation?.agent;
+      const session = agent?.session;
+      if (session === undefined || typeof session.append !== 'function') {
+        return {
+          kind: 'error',
+          text:
+            `Orchestrator mode was NOT applied: this command invocation carries no agent session to append the mode change to.`,
+        };
+      }
+
+      if (lower === 'off') {
+        session.append(ORCHESTRATE_EVENT_TYPE, { mode: 'off' });
+        return {
+          kind: 'success',
+          text: 'Orchestrator mode: off',
+        };
+      }
+
+      // Always write persistent 'on' event (abolishing fragile per-turn mechanism)
+      session.append(ORCHESTRATE_EVENT_TYPE, { mode: 'on' });
+
+      // If task text is given (not empty, not 'on')
+      if (lower !== 'on' && lower !== '') {
+        if (typeof agent?.followup !== 'function') {
+          return {
+            kind: 'error',
+            text: `Orchestrator mode was NOT applied: this agent cannot queue a follow-up turn (no followup method).`,
+          };
+        }
+        agent.followup(
+          createUserMessage({
+            content: [{ type: 'text', text: raw }],
+            source: { kind: 'user' },
+          }),
+        );
+        const preview = raw.length > 60 ? `${raw.slice(0, 60)}…` : raw;
+        return {
+          kind: 'success',
+          text: `Orchestrator mode: on (persistent until /${cmdName} off) — task queued: "${preview}"`,
+        };
+      }
+
+      return {
+        kind: 'success',
+        text: `Orchestrator mode: on (persistent until /${cmdName} off)`,
+      };
+    };
+
+    const handleAgentTeamCommand = (invocation: any) => {
+      const raw = (invocation.rawInput || '').trim();
+      const lower = raw.toLowerCase();
+
+      if (projections === undefined) {
+        missing();
+        return {
+          kind: 'error',
+          text:
+            `Agent-team mode was NOT applied: the sessionProjections service is missing on this host, so /using-agent-team has no effect and the team lead prompt will not inject. ` +
+            `Provide the dsh-session-projection sessionProjections service to enable agent-team mode.`,
+        };
+      }
+      const agent = invocation?.agent;
+      const session = agent?.session;
+      if (session === undefined || typeof session.append !== 'function') {
+        return {
+          kind: 'error',
+          text:
+            `Agent-team mode was NOT applied: this command invocation carries no agent session to append the mode change to.`,
+        };
+      }
+
+      if (lower === 'off') {
+        session.append(ORCHESTRATE_EVENT_TYPE, { mode: 'off' });
+        return {
+          kind: 'success',
+          text: 'Agent-team mode: off',
+        };
+      }
+
+      // Always write persistent 'agent-team' event
+      session.append(ORCHESTRATE_EVENT_TYPE, { mode: 'agent-team' });
+
+      if (lower !== 'on' && lower !== '') {
+        if (typeof agent?.followup !== 'function') {
+          return {
+            kind: 'error',
+            text: `Agent-team mode was NOT applied: this agent cannot queue a follow-up turn (no followup method).`,
+          };
+        }
+        agent.followup(
+          createUserMessage({
+            content: [{ type: 'text', text: raw }],
+            source: { kind: 'user' },
+          }),
+        );
+        const preview = raw.length > 60 ? `${raw.slice(0, 60)}…` : raw;
+        return {
+          kind: 'success',
+          text: `Agent-team mode: on (persistent until /using-agent-team off) — task queued: "${preview}"`,
+        };
+      }
+
+      return {
+        kind: 'success',
+        text: 'Agent-team mode: on (persistent until /using-agent-team off)',
+      };
+    };
+
+    // 1. Primary command: using-subagents
+    commands.register({
+      name: 'using-subagents',
+      description:
+        'Enter pure-orchestrator mode using subagents — /using-subagents <task> or say 使用子代理. Persistent until /using-subagents off.',
+      input: { hint: '<task> | on | off' },
+      handler: (inv: any) => handleSubagentsCommand(inv, 'using-subagents'),
+    });
+
+    // 2. Alias: orchestrate (retained for backwards compatibility)
     commands.register({
       name: 'orchestrate',
       description:
-        'Enter pure-orchestrator mode for this turn — /orchestrate <task> (e.g. /orchestrate 分析上周A股走势) or say 使用orchestrate模式. No args = this turn; on = persistent until off.',
-      input: { hint: '<task> | on | off (no args = this turn)' },
-      handler: (invocation: any) => {
-        const raw = (invocation.rawInput || '').trim();
-        const lower = raw.toLowerCase();
-        const mode = lower || 'on';
-        // Without sessionProjections the projection is never registered, so
-        // /orchestrate cannot take effect. Refuse with an honest message
-        // instead of falsely reporting success (P0 silent-degradation fix).
-        if (projections === undefined) {
-          // Service never became available (truly absent host): refuse with an
-          // honest message and warn, instead of falsely reporting success (P0
-          // silent-degradation fix).
-          missing();
-          return {
-            kind: 'error',
-            text:
-              `Orchestrator mode "${mode}" was NOT applied: the sessionProjections service is missing on this host, so /orchestrate has no effect and the orchestrator prompt will not inject. ` +
-              `Provide the dsh-session-projection sessionProjections service to enable orchestrator mode.`,
-          };
-        }
-        const agent = invocation?.agent;
-        const session = agent?.session;
-        if (session === undefined || typeof session.append !== 'function') {
-          return {
-            kind: 'error',
-            text:
-              `Orchestrator mode "${mode}" was NOT applied: this command invocation carries no agent session to append the mode change to.`,
-          };
-        }
-        if (!ORCHESTRATE_VALID_MODES.includes(mode as OrchestrateMode)) {
-          // Task text: orchestrate THIS task. The commands service consumes the
-          // whole line, so queue the task as a follow-up turn (wakes the agent);
-          // the per-turn command/run scan marks that turn orchestrated.
-          if (typeof agent?.followup !== 'function') {
-            return {
-              kind: 'error',
-              text:
-                `Orchestrator mode was NOT applied: this agent cannot queue a follow-up turn (no followup method).`,
-            };
-          }
-          agent.followup(
-            createUserMessage({
-              content: [{ type: 'text', text: raw }],
-              source: { kind: 'user' },
-            }),
-          );
-          const preview = raw.length > 60 ? `${raw.slice(0, 60)}…` : raw;
-          return {
-            kind: 'success',
-            text: `Orchestrator mode: on for this turn — task queued: "${preview}"`,
-          };
-        }
-        if (mode === 'on' && raw === '') {
-          // Per-turn: no sticky event. The section detects this command/run
-          // and orchestrates the NEXT user-message turn only.
-          return {
-            kind: 'success',
-            text:
-              'Orchestrator mode: on for this turn. Declare /orchestrate at the start of your message (or say 使用orchestrate模式) to enable it per turn; use /orchestrate on to keep it on until /orchestrate off.',
-          };
-        }
-        session.append(ORCHESTRATE_EVENT_TYPE, { mode });
-        return {
-          kind: 'success',
-          text: mode === 'off' ? 'Orchestrator mode: off' : 'Orchestrator mode: on (persistent until /orchestrate off)',
-        };
-      },
+        'Alias for /using-subagents — enter pure-orchestrator mode. Persistent until /orchestrate off.',
+      input: { hint: '<task> | on | off' },
+      handler: (inv: any) => handleSubagentsCommand(inv, 'orchestrate'),
+    });
+
+    // 3. New command: using-agent-team
+    commands.register({
+      name: 'using-agent-team',
+      description:
+        'Enter Agent-Team Lead mode — /using-agent-team <task> or say 使用agent-team. Persistent until /using-agent-team off.',
+      input: { hint: '<task> | on | off' },
+      handler: handleAgentTeamCommand,
     });
   });
 
@@ -639,6 +793,7 @@ export function applyOrchestrate(
               getProjections: () => projections,
               toolName,
               readOnlyTools,
+              getSettings,
               getEnforcement,
               warn: (message, err) => ctx.logger.warn('[orchestrate] ' + message, err),
             }),
@@ -692,12 +847,10 @@ export function applyOrchestrate(
         // Per-turn detection (the /using-aegis-like usage): the user message
         // that started THIS turn, or a just-run /orchestrate command, decides
         // this turn. The sticky projection below is only the backward-compat
-        // fallback. (Context-injection user/message events after the real
-        // message are ignored: currentTurnUserMessageText reads the FIRST
-        // message of the turn, and recentOrchestrateCommandRun bounds the
-        // command by turn/start, not by those injection events.)
+        // fallback.
         for (const candidate of sessionCandidates) {
           const perTurn = detectPerTurnOrchestrate(candidate);
+          if (perTurn === 'agent-team') return renderAgentTeamSection(getSettings(), toolName, getEnforcement());
           if (perTurn === 'on') return renderOrchestratorSection(getSettings(), toolName, getEnforcement());
           if (perTurn === 'off') return '';
         }
@@ -723,6 +876,9 @@ export function applyOrchestrate(
         }
         // Legitimate off: no section, no warning (intended behavior).
         if (resolvedMode === 'off') return '';
+        if (resolvedMode === 'agent-team') {
+          return renderAgentTeamSection(getSettings(), toolName, getEnforcement());
+        }
         return renderOrchestratorSection(getSettings(), toolName, getEnforcement());
       },
     });

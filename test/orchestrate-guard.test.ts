@@ -15,8 +15,10 @@ import {
   createOrchestrateToolGuard,
   isVectrMcpTool,
   orchestrateAlwaysAllowedTools,
+  resolveMainAgentAllowedTools,
   ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
   ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
+  AGENT_TEAM_MANAGEMENT_TOOLS,
   AGY_TO_DSH_MAP,
   STRICT_MIRROR_RUN_CODE,
   unwrapToolIntent,
@@ -112,15 +114,17 @@ describe('isVectrMcpTool', () => {
 });
 
 describe('orchestrateAlwaysAllowedTools', () => {
-  it('includes the configured delegation tool, close, control, job_output, and interaction tools, but excludes native subagent tools', () => {
+  it('includes the configured delegation tool, close, control, job_output, subagent_fork, and interaction tools, but excludes native subagent tools', () => {
     const allowed = orchestrateAlwaysAllowedTools('my_dispatch');
     expect(allowed).toContain('my_dispatch');
     expect(allowed).not.toContain('subagent');
-    expect(allowed).not.toContain('subagent_fork');
+    expect(allowed).toContain('subagent_fork');
     expect(allowed).toContain('close_subagent');
     expect(allowed).toContain('job_output');
     expect(allowed).toContain('ask_user_question');
     expect(allowed).toContain('todo_write');
+    expect(allowed).toContain('spawn_teammate');
+    expect(allowed).toContain('team_task_create');
     // The DSH base bundle's subagent control family (list_agents / send_message /
     // interrupt_agent) must always be allowed: without discovery + steering +
     // stop the orchestrator cannot manage the subagents it dispatches.
@@ -193,11 +197,12 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
     expect(guard(makeExec('mcp__github__create_issue', { agent: mainAgent }))).toContain('BLOCKED');
   });
 
-  it('allows only dispatch tools, subagent control tools, job_output, and interaction tools', () => {
-    const guard = makeGuard('on');
+  it('allows only dispatch tools, subagent control tools, job_output, and interaction tools when read-only tools are empty', () => {
+    const guard = makeGuard('on', { readOnlyTools: [] });
     for (const name of [
       'subagent_role',
       'close_subagent',
+      'subagent_fork',
       ...ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
       'job_output',
       'ask_user_question',
@@ -205,10 +210,19 @@ describe('createOrchestrateToolGuard — mode on, main agent', () => {
     ]) {
       expect(guard(makeExec(name, { agent: mainAgent })), name).toBeUndefined();
     }
-    // Native subagent tools, probing tools, and default read tools are strictly blocked
-    for (const name of ['subagent', 'subagent_fork', 'read', 'grep', 'glob', 'ls', 'find']) {
+    // Native subagent tools, probing tools, and default read tools are strictly blocked when readOnlyTools is empty
+    for (const name of ['subagent', 'read', 'grep', 'glob', 'ls', 'find']) {
       expect(guard(makeExec(name, { agent: mainAgent }))).toContain('BLOCKED');
     }
+  });
+
+  it('allows default read-only tools when no role filter is configured', () => {
+    const guard = makeGuard('on');
+    for (const name of ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS) {
+      expect(guard(makeExec(name, { agent: mainAgent })), name).toBeUndefined();
+    }
+    expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
+    expect(guard(makeExec('edit', { agent: mainAgent }))).toContain('BLOCKED');
   });
 
   it('keeps the subagent control tools allowed even when the read-only list is overridden', () => {
@@ -233,7 +247,7 @@ describe('createOrchestrateToolGuard — enforcement matrix (sticky × per-turn 
   const mainAgent = { session: { header: { id: 'main-session' } } };
 
   it('strict: blocks write/execute and read tools on a per-turn natural-language turn (no sticky on)', () => {
-    const guard = makeGuard('off', { enforcement: 'strict' });
+    const guard = makeGuard('off', { enforcement: 'strict', readOnlyTools: [] });
     const perTurn = { agent: { session: makePerTurnSession('nl') } };
     expect(guard(makeExec('bash', perTurn))).toContain('BLOCKED');
     expect(guard(makeExec('edit', perTurn))).toContain('BLOCKED');
@@ -280,7 +294,7 @@ describe('createOrchestrateToolGuard — enforcement matrix (sticky × per-turn 
   });
 
   it('lenient: still blocks on the sticky projection (the hard boundary)', () => {
-    const guard = makeGuard('on', { enforcement: 'lenient' });
+    const guard = makeGuard('on', { enforcement: 'lenient', readOnlyTools: [] });
     expect(guard(makeExec('bash', { agent: mainAgent }))).toContain('BLOCKED');
     expect(guard(makeExec('read', { agent: mainAgent }))).toContain('BLOCKED');
     expect(guard(makeExec('subagent_role', { agent: mainAgent }))).toBeUndefined();
@@ -615,8 +629,8 @@ describe('createOrchestrateToolGuard — agy_tool & run_code envelope unwrap & e
     expect(reason).toContain('subagent_role');
   });
 
-  it('blocks agy_tool calling read_file with BLOCKED reason and inner tool name', () => {
-    const guard = makeGuard('on');
+  it('blocks agy_tool calling read_file with BLOCKED reason and inner tool name when readOnlyTools is empty', () => {
+    const guard = makeGuard('on', { readOnlyTools: [] });
     const exec = makeExec('agy_tool', {
       agent: mainAgent,
       arguments: { tool: 'read_file', input: { AbsolutePath: '/tmp/test.ts' } },
@@ -987,5 +1001,163 @@ describe('Adversarial vulnerability defenses & compatibility', () => {
       expect(guard(makeExec('bash', { agent: pureMain }))).toContain('BLOCKED');
       expect(guard(makeExec('edit', { agent: pureMain }))).toContain('BLOCKED');
     });
+
+    it('allows worker teammates identified via session.header.origin = "teammate"', () => {
+      const guard = makeGuard('on');
+      const teammate = {
+        session: {
+          header: { origin: 'teammate' },
+        },
+      };
+
+      expect(guard(makeExec('bash', { agent: teammate }))).toBeUndefined();
+      expect(guard(makeExec('edit', { agent: teammate }))).toBeUndefined();
+      expect(guard(makeExec('write', { agent: teammate }))).toBeUndefined();
+    });
+  });
+});
+
+describe('resolveMainAgentAllowedTools and role template toolFilter integration', () => {
+  it('falls back to default read-only tools when settings or defaultRole are absent', () => {
+    const allowed = resolveMainAgentAllowedTools('subagent_role');
+    for (const tool of ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS) {
+      expect(allowed).toContain(tool);
+    }
+    expect(allowed).toContain('subagent_role');
+    expect(allowed).toContain('subagent_fork');
+    expect(allowed).toContain('spawn_teammate');
+    expect(allowed).not.toContain('bash');
+  });
+
+  it('uses default role toolFilter.allow as allowed business tools', () => {
+    const settings: any = {
+      defaultRole: 'lead-dev',
+      roles: {
+        'lead-dev': {
+          toolFilter: {
+            allow: ['custom_inspect', 'read'],
+            deny: [],
+          },
+        },
+      },
+    };
+    const allowed = resolveMainAgentAllowedTools('subagent_role', settings);
+    expect(allowed).toContain('custom_inspect');
+    expect(allowed).toContain('read');
+    expect(allowed).toContain('subagent_role');
+    expect(allowed).toContain('subagent_fork');
+    expect(allowed).not.toContain('grep');
+    expect(allowed).not.toContain('bash');
+  });
+
+  it('filters out deny tools from default role toolFilter', () => {
+    const settings: any = {
+      defaultRole: 'lead-dev',
+      roles: {
+        'lead-dev': {
+          toolFilter: {
+            allow: ['custom_inspect', 'read', 'bash'],
+            deny: ['bash'],
+          },
+        },
+      },
+    };
+    const allowed = resolveMainAgentAllowedTools('subagent_role', settings);
+    expect(allowed).toContain('custom_inspect');
+    expect(allowed).toContain('read');
+    expect(allowed).not.toContain('bash');
+  });
+
+  it('createOrchestrateToolGuard dynamically reads default role toolFilter from getSettings', () => {
+    let currentSettings: any = {
+      defaultRole: 'lead-role',
+      roles: {
+        'lead-role': {
+          toolFilter: {
+            allow: ['my_query_tool'],
+            deny: [],
+          },
+        },
+      },
+    };
+
+    const mainAgent = { session: { header: { id: 'main-s' } } };
+    const guard = createOrchestrateToolGuard({
+      getProjections: () => ({
+        snapshot: () => ({ values: { orchestrate: { mode: 'on' } } }),
+      }),
+      toolName: 'subagent_role',
+      getSettings: () => currentSettings,
+      warn: () => {},
+    });
+
+    // Allowed via default role's toolFilter
+    expect(guard(makeExec('my_query_tool', { agent: mainAgent }))).toBeUndefined();
+
+    // Default read tools are not in toolFilter.allow -> blocked
+    const readReason = guard(makeExec('read', { agent: mainAgent }));
+    expect(readReason).toContain('BLOCKED');
+    expect(readReason).toContain('Main Agent (default role)');
+
+    // System tools are always preserved
+    expect(guard(makeExec('subagent_role', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('subagent_fork', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('list_agents', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('send_message', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('job_output', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('ask_user_question', { agent: mainAgent }))).toBeUndefined();
+    expect(guard(makeExec('todo_write', { agent: mainAgent }))).toBeUndefined();
+
+    // Dynamic settings update: add read to allow
+    currentSettings = {
+      defaultRole: 'lead-role',
+      roles: {
+        'lead-role': {
+          toolFilter: {
+            allow: ['my_query_tool', 'read'],
+            deny: [],
+          },
+        },
+      },
+    };
+
+    expect(guard(makeExec('read', { agent: mainAgent }))).toBeUndefined();
+  });
+});
+
+describe('createOrchestrateToolGuard — Agent-Team mode', () => {
+  it('allows agent-team coordination tools and blocks execution tools with Lead-specific reason', () => {
+    const mainAgent = { session: { header: { id: 'team-lead-session' } } };
+    const guard = createOrchestrateToolGuard({
+      getProjections: () => ({
+        snapshot: () => ({ values: { orchestrate: { mode: 'agent-team' } } }),
+      }),
+      toolName: 'subagent_role',
+      warn: () => {},
+    });
+
+    // Team management tools allowed
+    for (const tool of [
+      'spawn_teammate',
+      'send_message',
+      'list_agents',
+      'wait_agent',
+      'interrupt_agent',
+      'team_task_create',
+      'team_task_list',
+      'team_task_get',
+      'team_task_update',
+    ]) {
+      expect(guard(makeExec(tool, { agent: mainAgent }))).toBeUndefined();
+    }
+
+    // Direct execution tools blocked with Agent-Team Lead message
+    const bashReason = guard(makeExec('bash', { agent: mainAgent }));
+    expect(bashReason).toBeDefined();
+    expect(bashReason).toContain('BLOCKED');
+    expect(bashReason).toContain('Agent-Team');
+    expect(bashReason).toContain('Team Lead');
+    expect(bashReason).toContain('spawn_teammate');
+    expect(bashReason).toContain('team_task_create');
   });
 });

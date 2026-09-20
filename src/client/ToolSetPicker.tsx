@@ -27,13 +27,15 @@ export interface ToolSetPickerProps {
   onChange: (allow: string[]) => void;
   /** Section copy; may accept interpolation params. */
   t: (key: SubagentDirectorKey, params?: Record<string, string | number>) => string;
+  /** Whether this picker is configuring the default role (Main Agent). */
+  isDefault?: boolean;
 }
 
 const style: { [key: string]: React.CSSProperties } = {
   root: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 8,
   },
   head: {
     display: 'flex',
@@ -41,56 +43,77 @@ const style: { [key: string]: React.CSSProperties } = {
     gap: 8,
   },
   count: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '1px 6px',
+    borderRadius: 4,
+    background: token.bgLayer1,
+    border: '1px solid ' + token.border,
     color: token.labelTertiary,
     fontSize: 11,
-    lineHeight: '16px',
+    lineHeight: '14px',
   },
   search: {
     ...textInputStyle,
-    height: 26,
+    height: 28,
     fontSize: 12,
+    borderRadius: 6,
+  },
+  actionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionBtn: {
+    ...ghostButtonStyle,
+    height: 24,
+    fontSize: 11,
+    padding: '0 8px',
+    borderRadius: 6,
   },
   grid: {
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
-    maxHeight: 260,
+    maxHeight: 240,
     overflowY: 'auto',
     border: '1px solid ' + token.border,
-    borderRadius: 6,
+    borderRadius: 8,
     padding: '6px 8px',
     background: token.bgLayer1,
   },
   item: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
     fontSize: 12,
     color: token.labelSecondary,
     cursor: 'pointer',
-    padding: '2px 4px',
-    borderRadius: 4,
+    padding: '3px 6px',
+    borderRadius: 5,
+    userSelect: 'none',
   },
   hint: {
     color: token.labelTertiary,
     fontSize: 11,
-    lineHeight: '15px',
+    lineHeight: '16px',
   },
   toggle: {
     ...ghostButtonStyle,
     height: 24,
-    fontSize: 12,
+    fontSize: 11,
     padding: '0 8px',
+    borderRadius: 6,
+    marginLeft: 'auto',
   },
 };
 
 /** Render the searchable, select-all capable tool-set picker. */
-export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerProps): React.JSX.Element {
+export function ToolSetPicker({ tools, selected, onChange, t, isDefault = false }: ToolSetPickerProps): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(true);
 
   const filtered = useMemo(() => filterToolNames(tools, query), [tools, query]);
-  const filteredSet = useMemo(() => new Set(filtered), [filtered]);
   const allFilteredSelected = filtered.length > 0 && filtered.every((name) => selected.includes(name));
 
   if (tools.length === 0) {
@@ -121,10 +144,10 @@ export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerPro
             placeholder={t('toolFilterSearch')}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={style.actionsRow}>
             <button
               type="button"
-              style={ghostButtonStyle}
+              style={style.actionBtn}
               disabled={filtered.length === 0 || allFilteredSelected}
               onClick={() => onChange(addToolNames(selected, filtered))}
             >
@@ -132,7 +155,7 @@ export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerPro
             </button>
             <button
               type="button"
-              style={ghostButtonStyle}
+              style={style.actionBtn}
               disabled={filtered.length === 0 || !filtered.some((name) => selected.includes(name))}
               onClick={() => onChange(removeToolNames(selected, filtered))}
             >
@@ -150,7 +173,7 @@ export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerPro
                     checked={selected.includes(name)}
                     onChange={() => onChange(toggleToolName(selected, name))}
                   />
-                  {name}
+                  <span>{name}</span>
                 </label>
               ))}
             </div>
@@ -158,7 +181,9 @@ export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerPro
         </>
       ) : null}
       <span style={style.hint}>
-        {selected.length === 0 ? t('toolFilterNone') : t('toolFilterHint')}
+        {isDefault
+          ? (selected.length === 0 ? t('mainAgentToolFilterNone') : t('mainAgentToolFilterHint'))
+          : (selected.length === 0 ? t('toolFilterNone') : t('toolFilterHint'))}
       </span>
     </div>
   );

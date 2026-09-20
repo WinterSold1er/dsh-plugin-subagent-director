@@ -79,7 +79,12 @@
 import type { ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools';
 
 import { CLOSE_SUBAGENT_TOOL_NAME } from './close-tool.js';
-import { detectPerTurnOrchestrate, resolveOrchestrateMode } from './orchestrate.js';
+import {
+  detectPerTurnOrchestrate,
+  resolveOrchestrateMode,
+  type OrchestrateMode,
+} from './orchestrate.js';
+import type { SubagentDirectorSettings } from './settings.js';
 
 /**
  * Orchestrate guard enforcement level, mirroring DirectorConfig.
@@ -99,7 +104,14 @@ export type OrchestrateEnforcement = 'strict' | 'lenient' | 'none';
  * the list is a host-contract value, not deployment state, so the default
  * lives here as a constant.
  */
-export const ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS: readonly string[] = [];
+export const ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS: readonly string[] = [
+  'read',
+  'read_image',
+  'grep',
+  'glob',
+  'ls',
+  'find',
+];
 
 /**
  * Model-facing names of the DSH base bundle's subagent CONTROL tools
@@ -118,6 +130,22 @@ export const ORCHESTRATE_SUBAGENT_CONTROL_TOOLS: readonly string[] = [
   'list_agents',
   'send_message',
   'interrupt_agent',
+];
+
+/**
+ * Tools for Agent-Team management and coordination.
+ */
+export const AGENT_TEAM_MANAGEMENT_TOOLS: readonly string[] = [
+  'spawn_teammate',
+  'send_message',
+  'list_agents',
+  'wait_agent',
+  'interrupt_agent',
+  'team_task_create',
+  'team_task_list',
+  'team_task_get',
+  'team_task_update',
+  'team_task_delete',
 ];
 
 /**
@@ -390,18 +418,57 @@ export function isVectrMcpTool(name: string): boolean {
  * built-in subagent tools, the plugin's close tool), the base bundle's
  * subagent control tools, subagent result collection (`job_output`), plus the
  * interaction tools the orchestration rules require (asking the user,
- * tracking todos).
+ * tracking todos) and agent-team coordination tools.
  */
 export function orchestrateAlwaysAllowedTools(toolName: string): readonly string[] {
   return [
     toolName,
+    'subagent_role',
     'subagent_define',
+    'subagent_fork',
     CLOSE_SUBAGENT_TOOL_NAME,
     ...ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
     'job_output',
     'ask_user_question',
     'todo_write',
+    ...AGENT_TEAM_MANAGEMENT_TOOLS,
   ];
+}
+
+/**
+ * Resolve the allowed tools for the Main Agent based on the default role's toolFilter.
+ * If defaultRole.toolFilter.allow is configured and non-empty, use it (minus deny).
+ * System-level orchestration and coordination tools are always retained.
+ * If no toolFilter or no default role, safely fall back to the read-only tools.
+ */
+export function resolveMainAgentAllowedTools(
+  toolName: string,
+  settings?: SubagentDirectorSettings,
+  readOnlyFallback?: readonly string[],
+): Set<string> {
+  const alwaysAllowed = orchestrateAlwaysAllowedTools(toolName);
+  let businessTools: readonly string[] | undefined;
+
+  const defaultRoleId = settings?.defaultRole;
+  const defaultRole = defaultRoleId && settings?.roles ? settings.roles[defaultRoleId] : undefined;
+
+  if (
+    defaultRole?.toolFilter?.allow &&
+    Array.isArray(defaultRole.toolFilter.allow) &&
+    defaultRole.toolFilter.allow.length > 0
+  ) {
+    const allowSet = new Set(defaultRole.toolFilter.allow);
+    if (defaultRole.toolFilter.deny && Array.isArray(defaultRole.toolFilter.deny)) {
+      for (const denied of defaultRole.toolFilter.deny) {
+        allowSet.delete(denied);
+      }
+    }
+    businessTools = Array.from(allowSet);
+  } else {
+    businessTools = readOnlyFallback ?? ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS;
+  }
+
+  return new Set([...alwaysAllowed, ...businessTools]);
 }
 
 export interface OrchestrateGuardDeps {
@@ -410,7 +477,9 @@ export interface OrchestrateGuardDeps {
   /** Model-facing name of this plugin's delegation tool (the dispatch the BLOCKED message points to). */
   toolName: string;
   /** Read-only tool names allowed for the orchestrator (config-injected, see DirectorConfig). */
-  readOnlyTools: readonly string[];
+  readOnlyTools?: readonly string[];
+  /** Live settings getter. Used to resolve default role and its toolFilter. */
+  getSettings?: () => SubagentDirectorSettings;
   /** Enforcement level; 'strict' (default) blocks sticky + per-turn, 'lenient' blocks sticky only. */
   enforcement?: OrchestrateEnforcement;
   /**
@@ -426,25 +495,36 @@ export interface OrchestrateGuardDeps {
 
 /**
  * Build the orchestrate-mode ToolGuard. See the file header for the policy and
- * every decision encoded here. The allow-set is computed once (toolName and
- * readOnlyTools are mount-time constants); only the mode lookup is per-call.
+ * every decision encoded here.
  */
 export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuard {
-  const allowed = new Set<string>([...orchestrateAlwaysAllowedTools(deps.toolName), ...deps.readOnlyTools]);
   let warnedNoAgent = false;
   let warnedNoProjections = false;
 
-  const blocked = (rawInnerName: string): string =>
-    'BLOCKED: orchestrate mode is ON for this session — you are the pure orchestrator and may not call `' +
-    rawInnerName +
-    '` yourself. This is enforced at the tool level, not a transient error: retrying will keep failing. ' +
-    'You must NOT read files, search code, or execute commands directly. You MUST dispatch all exploration, research, and execution work via `' +
-    deps.toolName +
-    '` instead. To inspect or steer subagents you already started, use `list_agents`, `send_message`, or `interrupt_agent` (and `job_output` to collect background results).';
+  const blocked = (rawInnerName: string, isAgentTeam: boolean): string => {
+    if (isAgentTeam) {
+      return (
+        `BLOCKED: orchestrate mode is ON (Agent-Team). Tool \`${rawInnerName}\` is blocked by tool permission settings for the Lead agent. ` +
+        `As the Team Lead, you must NOT execute tasks, run commands, or edit files directly. ` +
+        `You MUST dispatch tasks to teammates via \`spawn_teammate\`, manage the task board via \`team_task_create\`, ` +
+        `and coordinate teammates via \`send_message\` or \`wait_agent\`.`
+      );
+    }
+    return (
+      `BLOCKED: orchestrate mode is ON for this session. Tool \`${rawInnerName}\` is blocked by the tool permission settings for the Main Agent (default role). ` +
+      `You are in orchestrator mode and must NOT execute tasks, edit files, or run commands directly. ` +
+      `You MUST delegate all exploration, research, and execution work to subagents via \`${deps.toolName}\` (or teammates). ` +
+      `To inspect or steer subagents you already started, use \`list_agents\`, \`send_message\`, or \`interrupt_agent\` (and \`job_output\` to collect background results).`
+    );
+  };
 
   return (exec: Readonly<ToolExecution>): string | undefined => {
     // 1. Unwrap intent to normalize agy_tool envelopes, run_code wrappers, and native calls
     const intent = unwrapToolIntent(exec, deps.toolName);
+
+    // 2. Resolve allowed tools dynamically from default role's toolFilter (or fallback to read-only tools)
+    const settings = deps.getSettings?.();
+    const allowed = resolveMainAgentAllowedTools(deps.toolName, settings, deps.readOnlyTools);
 
     // Fast path: allow-listed tools and vectr MCP tools are permitted for the orchestrator.
     if (allowed.has(intent.effectiveName) || isVectrMcpTool(intent.effectiveName)) return undefined;
@@ -467,35 +547,48 @@ export function createOrchestrateToolGuard(deps: OrchestrateGuardDeps): ToolGuar
       | undefined;
     const origin = s?.header?.origin ?? s?.meta?.origin;
     const delegationDepth = Number(s?.header?.delegationDepth ?? s?.meta?.delegationDepth ?? 0);
-    // Subagent children (spawn OR fork, any depth) are the workers: the
+    // Subagent children (spawn OR fork, any depth) and teammates are the workers: the
     // orchestrate contract never applies to them. Header/meta metadata is durable
     // (stamped by the subagent driver, survives resume), and it is the only
     // reliable discriminator — a fork child's log is seeded from the parent,
     // so an event-based check would falsely block the child.
-    if (origin === 'subagent' || delegationDepth > 0) return undefined;
+    if (origin === 'subagent' || origin === 'teammate' || delegationDepth > 0) return undefined;
 
     const enforcement = deps.getEnforcement?.() ?? deps.enforcement ?? 'strict';
     // 'none' disables all tool-level interception (pure prompt-only mode)
     if (enforcement === 'none') return undefined;
 
+    let activeMode: OrchestrateMode | undefined;
+
     // Per-turn orchestration tool-level block (controlled by enforcement setting:
     // strict blocks write/execute tools; lenient skips per-turn tool blocking).
-    if (enforcement === 'strict' && detectPerTurnOrchestrate(agent.session) === 'on') {
-      return blocked(intent.rawInnerName);
+    if (enforcement === 'strict') {
+      const perTurn = detectPerTurnOrchestrate(agent.session);
+      if (perTurn === 'on' || perTurn === 'agent-team') {
+        activeMode = perTurn;
+      }
     }
 
     // Sticky orchestrate mode resolution (with 3-tier fallback to session.events)
-    const projections = deps.getProjections();
-    const mode = resolveOrchestrateMode(projections, [agent.session], (message, err) =>
-      deps.warn('orchestrate guard: ' + message, err),
-    );
-    if (mode === 'on') return blocked(intent.rawInnerName);
-
-    if (projections === undefined && !warnedNoProjections) {
-      warnedNoProjections = true;
-      deps.warn(
-        'orchestrate guard: sessionProjections service is missing — resolved mode via event fallback.',
+    if (!activeMode) {
+      const projections = deps.getProjections();
+      const mode = resolveOrchestrateMode(projections, [agent.session], (message, err) =>
+        deps.warn('orchestrate guard: ' + message, err),
       );
+      if (mode === 'on' || mode === 'agent-team') {
+        activeMode = mode;
+      }
+
+      if (projections === undefined && !warnedNoProjections) {
+        warnedNoProjections = true;
+        deps.warn(
+          'orchestrate guard: sessionProjections service is missing — resolved mode via event fallback.',
+        );
+      }
+    }
+
+    if (activeMode === 'on' || activeMode === 'agent-team') {
+      return blocked(intent.rawInnerName, activeMode === 'agent-team');
     }
 
     return undefined;
