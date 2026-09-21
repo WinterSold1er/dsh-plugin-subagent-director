@@ -1,5 +1,5 @@
 node_modules/
-lib/
+# lib/ 预提交到 git，供 github 源 tarball 直接装载
 *.log
 .DS_Store
 coverage/
