@@ -11,7 +11,7 @@
  * rest of the settings section in both themes.
  */
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { SubagentDirectorKey } from './locales.js';
 import {
   addToolNames,
@@ -35,6 +35,8 @@ export interface ToolSetPickerProps {
 export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerProps): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(true);
+  // Stable id for the expandable region so the toggle can advertise its target.
+  const panelId = useId();
 
   const filtered = useMemo(() => filterToolNames(tools, query), [tools, query]);
   const filteredSet = useMemo(() => new Set(filtered), [filtered]);
@@ -56,12 +58,18 @@ export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerPro
         <span className="sd-toolset-count">
           {t('toolFilterCount', { count: selected.length, total: tools.length })}
         </span>
-        <button type="button" className="sd-btn sd-btn-ghost sd-btn-sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <button
+          type="button"
+          className="sd-btn sd-btn-ghost sd-btn-sm"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          onClick={() => setOpen((o) => !o)}
+        >
           {open ? t('toolFilterCollapse') : t('toolFilterExpand')}
         </button>
       </div>
       {open ? (
-        <>
+        <div className="sd-toolset-body" id={panelId}>
           <input
             className="sd-input sd-search"
             value={query}
@@ -102,7 +110,7 @@ export function ToolSetPicker({ tools, selected, onChange, t }: ToolSetPickerPro
               ))}
             </div>
           )}
-        </>
+        </div>
       ) : null}
       <span className="sd-note">
         {selected.length === 0 ? t('toolFilterNone') : t('toolFilterHint')}

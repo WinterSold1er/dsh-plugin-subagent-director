@@ -103,7 +103,12 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
         );
     }
     if (state.status !== 'ready') {
-        return <div className="sd-section"><p className="sd-intro">{t('sectionIntro')}</p></div>;
+        return (
+            <div className="sd-section">
+                <p className="sd-intro">{t('sectionIntro')}</p>
+                <p className="sd-hint" role="status">{t('loading')}</p>
+            </div>
+        );
     }
 
     const section = state.section;

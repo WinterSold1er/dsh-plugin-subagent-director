@@ -109,7 +109,7 @@ export function SubagentCloseAction({
         {state === 'closing' ? t('closingContinuable') : t('closeContinuable')}
       </button>
       {state === 'failed' && (
-        <span className="sd-close-error" role="alert">
+        <span className="sd-close-error" role="alert" title={t('closeFailed', { message: error ?? '' })}>
           {t('closeFailed', { message: error ?? '' })}
         </span>
       )}
