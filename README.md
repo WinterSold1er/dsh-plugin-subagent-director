@@ -80,6 +80,12 @@ subagent_role({ role: "code-reviewer", model: "deepseek-chat", prompt: "..." }) 
 > `modelSelectionSettings` 负责）。
 > 因此需要角色语义时，请在提示里明确要求调用 `subagent_role`。
 
+## 🖼️ 界面预览 / Screenshots
+
+以下截图来自本地一次性预览实例，示例数据仅用于演示：
+
+![设置页面](docs/assets/screenshots/settings-page.png)
+
 ## ⚙️ 配置 / Configuration
 
 `dsh plugin add` 会通过插件包自带的 `cordis.patch.yml` 自动挂载主条目与桥接条目

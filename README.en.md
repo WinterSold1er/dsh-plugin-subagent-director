@@ -76,6 +76,12 @@ notice); using ids is recommended, see the Delegate line in the system prompt.
 > `modelSelectionSettings`).
 > So when role semantics are needed, explicitly ask in the prompt to call `subagent_role`.
 
+## 🖼️ 界面预览 / Screenshots
+
+The screenshot below comes from a throwaway local preview instance; the example data is for demonstration only:
+
+![Settings page](docs/assets/screenshots/settings-page.png)
+
 ## ⚙️ 配置 / Configuration
 
 `dsh plugin add` auto-mounts the main and bridge entries (via the `cordis.patch.yml` shipped
