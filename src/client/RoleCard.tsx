@@ -10,18 +10,6 @@ import type { DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
 import { modelsForProvider, providerNames } from './allowed-routes.js';
 import type { RoleDraft, StoredRole } from './store-logic.js';
-import {
-  cardStyle,
-  dangerButtonStyle,
-  fieldLabelStyle,
-  ghostButtonStyle,
-  primaryButtonStyle,
-  rowStyle,
-  selectStyle,
-  textAreaStyle,
-  textInputStyle,
-  token,
-} from './ui.js';
 
 export interface RoleCardProps {
   /** Persisted role id (kebab-case). */
@@ -58,7 +46,6 @@ export function RoleCard({ id, role, isDefault, routes, t, onSave, onDelete, onS
   });
 
   const provider = draft.provider || role.provider;
-  const model = draft.model || role.model;
   const providers = providerNames(routes);
   const modelOptions = provider ? modelsForProvider(routes, provider) : [];
 
@@ -95,34 +82,39 @@ export function RoleCard({ id, role, isDefault, routes, t, onSave, onDelete, onS
 
   if (editing) {
     return (
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('roleDisplayName')}</strong>
-          {isDefault ? <span style={{ color: token.accent, fontSize: 12 }}>{t('defaultRoleBadge')}</span> : null}
+      <div className="sd-card">
+        <div className="sd-head">
+          <div className="sd-head-main">
+            <strong className="sd-title">{role.displayName || id}</strong>
+            <div className="sd-role-sub">
+              <span className="sd-mono">{id}</span>
+              {isDefault ? <span className="sd-chip sd-chip-accent">{t('defaultRoleBadge')}</span> : null}
+            </div>
+          </div>
         </div>
-        <div style={rowStyle}>
-          <label style={fieldLabelStyle}>{t('roleDisplayName')}</label>
-          <input style={textInputStyle} value={draft.displayName} placeholder={t('displayNamePlaceholder')} onChange={(e) => setField('displayName', e.target.value)} />
+        <div className="sd-field">
+          <label className="sd-label">{t('roleDisplayName')}</label>
+          <input className="sd-input" value={draft.displayName} placeholder={t('displayNamePlaceholder')} onChange={(e) => setField('displayName', e.target.value)} />
         </div>
-        <div style={rowStyle}>
-          <label style={fieldLabelStyle}>{t('roleDescription')}</label>
-          <textarea style={textAreaStyle} value={draft.description} placeholder={t('descriptionPlaceholder')} onChange={(e) => setField('description', e.target.value)} />
+        <div className="sd-field">
+          <label className="sd-label">{t('roleDescription')}</label>
+          <textarea className="sd-textarea" value={draft.description} placeholder={t('descriptionPlaceholder')} onChange={(e) => setField('description', e.target.value)} />
         </div>
-        <div style={rowStyle}>
-          <label style={fieldLabelStyle}>{t('agentPreset')}</label>
+        <div className="sd-field">
+          <label className="sd-label">{t('agentPreset')}</label>
           <input
-            style={textInputStyle}
+            className="sd-input"
             value={draft.agentPreset ?? ''}
             placeholder={t('agentPresetPlaceholder')}
             onChange={(e) => setField('agentPreset', e.target.value)}
           />
-          <span style={{ color: token.labelTertiary, fontSize: 12 }}>{t('agentPresetHint')}</span>
+          <span className="sd-note">{t('agentPresetHint')}</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-          <div style={rowStyle}>
-            <label style={fieldLabelStyle}>{t('provider')}</label>
+        <div className="sd-grid">
+          <div className="sd-field">
+            <label className="sd-label">{t('provider')}</label>
             <select
-              style={selectStyle}
+              className="sd-select"
               value={draft.provider}
               disabled={providers.length === 0}
               onChange={(e) => setField('provider', e.target.value)}
@@ -133,10 +125,10 @@ export function RoleCard({ id, role, isDefault, routes, t, onSave, onDelete, onS
               ))}
             </select>
           </div>
-          <div style={rowStyle}>
-            <label style={fieldLabelStyle}>{t('model')}</label>
+          <div className="sd-field">
+            <label className="sd-label">{t('model')}</label>
             <select
-              style={selectStyle}
+              className="sd-select"
               value={draft.model}
               disabled={modelOptions.length === 0}
               onChange={(e) => setField('model', e.target.value)}
@@ -147,51 +139,53 @@ export function RoleCard({ id, role, isDefault, routes, t, onSave, onDelete, onS
               ))}
             </select>
           </div>
-          <div style={rowStyle}>
-            <label style={fieldLabelStyle}>{t('reasoningEffort')}</label>
+          <div className="sd-field">
+            <label className="sd-label">{t('reasoningEffort')}</label>
             <input
-              style={textInputStyle}
+              className="sd-input"
               value={draft.reasoningEffort}
               placeholder="(advisory)"
               onChange={(e) => setField('reasoningEffort', e.target.value)}
             />
           </div>
         </div>
-        {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={primaryButtonStyle} disabled={busy} onClick={save}>{t('save')}</button>
-          <button style={ghostButtonStyle} disabled={busy} onClick={() => setEditing(false)}>{t('cancel')}</button>
+        {failure !== undefined ? <p className="sd-error-text">{failure}</p> : null}
+        <div className="sd-actions sd-actions-end">
+          <button type="button" className="sd-btn sd-btn-primary" disabled={busy} onClick={() => void save()}>{t('save')}</button>
+          <button type="button" className="sd-btn sd-btn-ghost" disabled={busy} onClick={() => setEditing(false)}>{t('cancel')}</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{role.displayName || id}</strong>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: token.labelTertiary, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{id}</span>
-          {isDefault ? <span style={{ color: token.accent, fontSize: 12 }}>{t('defaultRoleBadge')}</span> : null}
+    <div className="sd-card">
+      <div className="sd-role-head">
+        <div className="sd-head-main">
+          <strong className="sd-title">{role.displayName || id}</strong>
+          <div className="sd-role-sub">
+            <span className="sd-mono">{id}</span>
+            {isDefault ? <span className="sd-chip sd-chip-accent">{t('defaultRoleBadge')}</span> : null}
+          </div>
         </div>
       </div>
       {role.description ? (
-        <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{role.description}</p>
+        <p className="sd-role-desc">{role.description}</p>
       ) : null}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="sd-meta">
         <Metadata label={t('agentPreset')} value={role.agentPreset} />
         <Metadata label={t('provider')} value={role.provider} />
         <Metadata label={t('model')} value={role.model} />
         <Metadata label={t('reasoningEffort')} value={role.reasoningEffort} />
-        {role.persona || role.toolFilter?.allow?.length ? (
-          <span style={{ color: token.danger, fontSize: 12 }}>{t('legacyRoleFields')}</span>
-        ) : null}
       </div>
-      {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button style={ghostButtonStyle} disabled={busy} onClick={() => setEditing(true)}>{t('edit')}</button>
-        <button style={ghostButtonStyle} disabled={busy || isDefault} onClick={() => (void onSetDefault(), undefined)}>{t('setDefaultRole')}</button>
-        <button style={dangerButtonStyle} disabled={busy} onClick={remove}>{t('deleteRole')}</button>
+      {role.persona || role.toolFilter?.allow?.length ? (
+        <p className="sd-warn-text">{t('legacyRoleFields')}</p>
+      ) : null}
+      {failure !== undefined ? <p className="sd-error-text">{failure}</p> : null}
+      <div className="sd-actions">
+        <button type="button" className="sd-btn sd-btn-ghost" disabled={busy} onClick={() => setEditing(true)}>{t('edit')}</button>
+        <button type="button" className="sd-btn sd-btn-ghost" disabled={busy || isDefault} onClick={() => (void onSetDefault(), undefined)}>{t('setDefaultRole')}</button>
+        <button type="button" className="sd-btn sd-btn-danger" disabled={busy} onClick={() => void remove()}>{t('deleteRole')}</button>
       </div>
     </div>
   );
@@ -200,8 +194,9 @@ export function RoleCard({ id, role, isDefault, routes, t, onSave, onDelete, onS
 function Metadata({ label, value }: { label: string; value: string | undefined }): JSX.Element | null {
   if (!value) return null;
   return (
-    <span style={{ color: token.labelSecondary, fontSize: 12 }}>
-      {label}: <span style={{ color: token.labelPrimary }}>{value}</span>
+    <span className="sd-meta-item">
+      <span className="sd-meta-label">{label}</span>
+      <span className="sd-meta-value">{value}</span>
     </span>
   );
 }

@@ -27,7 +27,6 @@ import {
 } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
 import { isContinuableChild } from './subagent-model.js';
-import { dangerButtonStyle, token } from './ui.js';
 
 /** Business face injected by the registration (client/index.ts). */
 export interface SubagentCloseActionInjected {
@@ -44,35 +43,6 @@ export type SubagentCloseActionProps = PropsRuntime<'conversation.session.header
 export const NS = 'settings.subagentDirector' as const;
 
 type ActionState = 'idle' | 'closing' | 'closed' | 'failed';
-
-/** Inline styling using the shared token surface (no CSS pipeline; M2 deviation). */
-const style: { [key: string]: React.CSSProperties } = {
-  wrap: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  button: {
-    ...dangerButtonStyle,
-    height: 24,
-    fontSize: 12,
-    padding: '0 10px',
-  },
-  settled: {
-    color: token.labelTertiary,
-    fontSize: 12,
-    lineHeight: '16px',
-  },
-  error: {
-    color: token.danger,
-    fontSize: 12,
-    lineHeight: '16px',
-    maxWidth: 260,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-};
 
 /** Render the release-sustained-state button for a continuable child, or nothing. */
 export function SubagentCloseAction({
@@ -116,17 +86,17 @@ export function SubagentCloseAction({
 
   if (state === 'closed') {
     return (
-      <div style={style.wrap} role="status">
-        <span style={style.settled}>{t('closedSubagent')}</span>
+      <div className="sd-close-wrap" role="status">
+        <span className="sd-close-settled">{t('closedSubagent')}</span>
       </div>
     );
   }
 
   return (
-    <div style={style.wrap}>
+    <div className="sd-close-wrap">
       <button
         type="button"
-        style={style.button}
+        className="sd-btn sd-btn-danger sd-btn-sm"
         disabled={state === 'closing'}
         onClick={() => {
           const confirmed =
@@ -139,7 +109,7 @@ export function SubagentCloseAction({
         {state === 'closing' ? t('closingContinuable') : t('closeContinuable')}
       </button>
       {state === 'failed' && (
-        <span style={style.error} role="alert">
+        <span className="sd-close-error" role="alert">
           {t('closeFailed', { message: error ?? '' })}
         </span>
       )}

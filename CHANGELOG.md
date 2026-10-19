@@ -2,9 +2,21 @@
 
 本项目的所有显著变更都会记录在此文件中。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [0.6.0-beta.1] - 2026-10-17
+## 0.6.0-beta.2 - 2026-10-19
 
-### 兼容性：适配 DSH 0.2.1-rc.1 / rc.2（破坏性）
+### 新增
+
+- **设置界面视觉重做**：按 DSH 官方设计语言重做插件详情页配置区、composer 下方的模型只读行与会话头部的释放按钮。统一使用官方主题令牌（表面 / 文本 / 边框 / 状态色 / 焦点环），字号收敛到 11 / 12 / 13 / 14 阶梯，间距与圆角对齐 8pt 体系；亮色与暗色主题一致，层级靠字号、字重、颜色与间距表达。
+- **统一组件样式**：默认模型卡、角色模板卡片、内联编辑表单、工具集选择器、主 / 次 / 危险按钮、输入框、状态 chip 与内联错误提示共用一套样式；补齐 `:focus-visible` 焦点环与克制的 hover / disabled 过渡，移除硬编码颜色。
+- **可维护性**：新增一份随插件卸载清理的样式表，交互态由真实 CSS 规则表达，组件统一引用主题令牌与 class。
+
+### 文档
+
+- README / README.en.md 同步 0.6.0-beta.2 与界面说明；全部 Markdown 标题去除括号并精简。
+
+## 0.6.0-beta.1 - 2026-10-17
+
+### 兼容性：适配 DSH 0.2.1-rc.1 / rc.2
 
 - **子代理接缝迁移**：DSH 0.2.1 将 `ctx.subagents.start()` /
   `startContinuable()` 合并为统一的 `ctx.subagents.startActivation(spec)`，
@@ -34,7 +46,7 @@
   `0.5.6`。角色中已有的 persona/toolFilter 需要迁移到 DSH Agent Preset，
   再在角色里填写 preset id。
 
-## [0.5.6] - 2026-10-10
+## 0.5.6 - 2026-10-10
 
 ### 修复
 
@@ -47,7 +59,7 @@
   测试立即失败）。仅影响 `backgroundMode: 'one-shot'` + `run_in_background` 路径；
   continuable 与前台路径不受影响。
 
-## [0.5.5] - 2026-09-29
+## 0.5.5 - 2026-09-29
 
 ### 兼容性
 
@@ -61,9 +73,9 @@
   兼容矩阵 `dsh.compatibility.dshReleases` 新增 `"0.2.0-rc.1": "compatible"`，
   README 徽章与兼容性声明同步更新。
 
-## [0.5.4] - 2026-09-27
+## 0.5.4 - 2026-09-27
 
-### 变更：配置移到插件详情页（退役 settings.section）
+### 变更：配置移到插件详情页并退役 settings.section
 
 - **移除 `settings.section` 注册**：DSH 设置面板不再承载本插件的配置。
 - **新增 `plugins.bundle.config` 注册**（key = npm 包名 `dsh-plugin-subagent-director`）：
@@ -80,7 +92,7 @@
 - README 中「DSH 设置面板内可视化配置」等入口描述同步更新。
 - 不涉及 inject 变更（本插件不读取任何 `ctx.remote.*` 命名空间）。
 
-## [0.5.3] - 2026-09-25
+## 0.5.3 - 2026-09-25
 
 ### 兼容：适配 DSH 0.1.7-rc.2
 
@@ -115,7 +127,7 @@ schemastery 表达，写入时不再被拒绝——配置错误不再被主动�
 - 测试版 `0.5.3-beta.0`（`--tag beta`）的内容——设置子系统迁移至 `SettingsForms`
   （`0.5.2` 条目）与本条加固——随本版一并正式发布。
 
-## [0.5.2] - 2026-09-24
+## 0.5.2 - 2026-09-24
 
 ### 兼容：设置子系统迁移至 DSH 0.1.7-rc.1 的 `SettingsForms`
 
@@ -145,7 +157,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
   SettingsConflictError` 方法面在 `SettingsForms` 中不变，`/subagent-director` 的
   `settingsView` / `settingsMutate` 端点形状与乐观锁语义无需改动。
 
-### 兼容：连带修复 0.1.7 客户端 API 漂移（随依赖走廊一并暴露）
+### 兼容：连带修复 0.1.7 客户端 API 漂移
 
 依赖升到 0.1.7-rc.1 后 `tsc` 暴露两处客户端类型破坏，随本次一并最小适配：
 
@@ -171,7 +183,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
   删除 `test/settings-snapshot.test.ts`（`createSettingsSnapshot` 已随旧模型移除）。
 - `npm test` 277/277 通过；`npm run typecheck` 与 `npm run build` 通过。
 
-## [0.5.1] - 2026-09-22
+## 0.5.1 - 2026-09-22
 
 ### 变更
 
@@ -189,7 +201,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
 
 - `npm run typecheck`、`npm test`、`npm run build` 全部通过（与 CI 步骤一致）。
 
-## [0.5.0] - 2026-09-04
+## 0.5.0 - 2026-09-04
 
 ### 变更
 
@@ -268,7 +280,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
   端点与载荷）不变；`installDirectorSettings` 等导出签名保持；`RpcError.sessionId`
   品牌冲突（宿主 apiproxy 嵌套的 `dsh-session` 副本）在边界处收敛为最小转型。
 
-## [0.4.0] - 2026-08-31
+## 0.4.0 - 2026-08-31
 
 ### 新增
 
@@ -299,7 +311,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
 
 - 用过 `/orchestrate` 的会话在未挂载本插件的 boot（卸载后、其他 profile）中无法加载：上游暂无第三方事件注册 / `ignorable` 写入 API，已在 README FAQ 与 issue #6 记录。
 
-## [0.3.0] - 2026-08-29
+## 0.3.0 - 2026-08-29
 
 ### 新增
 
@@ -347,7 +359,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
 
 [0.3.0]: https://github.com/SeverusZh/dsh-plugin-subagent-director/releases/tag/v0.3.0
 
-## [0.2.0] - 2026-08-17
+## 0.2.0 - 2026-08-17
 
 ### 新增
 
@@ -374,7 +386,7 @@ DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSec
 - README：默认模型兜底、配置热更新、角色显示名引用、推荐默认角色示例；
 - 新增设计文档与实现计划（`docs/superpowers/`）。
 
-## [0.1.0] - 2026-08-14
+## 0.1.0 - 2026-08-14
 
 首个公开发布版本。
 

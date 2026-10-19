@@ -15,6 +15,10 @@
  * path ops through settings.mutate with an optimistic-revision lock, so the
  * section only ever echoes the acknowledge-and-reload outcome. Failures return
  * a localized message that the save/delete/restore controls surface inline.
+ *
+ * Presentation follows the official DSH design language: a content column of
+ * card sections built from theme tokens (surface / border / type scale / focus
+ * ring), with all hover and focus behaviour defined in ui.ts.
  */
 import { useEffect, useState } from 'react';
 // Type-only: pulls in the Plugins page's slot contract so the
@@ -30,18 +34,6 @@ import type { SubagentOptionsState, SubagentOptionsStore } from './store.js';
 import type { RoleDraft, StoredRole } from './store-logic.js';
 import { roleIdFromName } from './store-logic.js';
 import { RoleCard } from './RoleCard.js';
-import {
-  cardStyle,
-  fieldLabelStyle,
-  ghostButtonStyle,
-  primaryButtonStyle,
-  rowStyle,
-  sectionWidth,
-  selectStyle,
-  textAreaStyle,
-  textInputStyle,
-  token,
-} from './ui.js';
 
 /** Injected dependencies of {@link SubagentOptionsSection} (slot `inject`). */
 export interface SubagentOptionsSectionInjected {
@@ -100,14 +92,18 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
 
     if (state.status === 'error') {
         return (
-            <div style={sectionWidth}>
-                <p style={{ color: token.danger, fontSize: 13 }}>{t('loadError')}: {state.error ?? ''}</p>
-                <button style={ghostButtonStyle} onClick={() => void controller.load()}>{t('retry')}</button>
+            <div className="sd-section">
+                <div className="sd-card sd-card-error">
+                    <p className="sd-error-text">{t('loadError')} {state.error ?? ''}</p>
+                    <div className="sd-actions">
+                        <button type="button" className="sd-btn sd-btn-ghost" onClick={() => void controller.load()}>{t('retry')}</button>
+                    </div>
+                </div>
             </div>
         );
     }
     if (state.status !== 'ready') {
-        return <div style={sectionWidth}><p style={{ color: token.labelSecondary, fontSize: 13 }}>{t('sectionIntro')}</p></div>;
+        return <div className="sd-section"><p className="sd-intro">{t('sectionIntro')}</p></div>;
     }
 
     const section = state.section;
@@ -117,8 +113,8 @@ function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null 
     const routes = state.allowedRoutes;
 
     return (
-        <div style={sectionWidth}>
-            <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{t('sectionIntro')}</p>
+        <div className="sd-section">
+            <p className="sd-intro">{t('sectionIntro')}</p>
             <DefaultModelRow
                 controller={controller}
                 routes={routes}
@@ -215,23 +211,25 @@ function DefaultModelRow({ controller, routes, modelSelectionEnabled, writable, 
     };
 
     return (
-        <div style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('defaultsHeading')}</strong>
-                <button style={ghostButtonStyle} disabled={!writable || busy} onClick={() => void restore()}>{t('restoreDefaults')}</button>
+        <div className="sd-card">
+            <div className="sd-head">
+                <div className="sd-head-main">
+                    <strong className="sd-title">{t('defaultsHeading')}</strong>
+                    <p className="sd-hint">{t('defaultsHint')}</p>
+                </div>
+                <button type="button" className="sd-btn sd-btn-ghost" disabled={!writable || busy} onClick={() => void restore()}>{t('restoreDefaults')}</button>
             </div>
-            <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{t('defaultsHint')}</p>
             {noAllowed ? (
-                <p style={{ margin: '6px 0 0', color: token.danger, fontSize: 12, lineHeight: '16px' }}>{t('noAllowedModels')}</p>
+                <p className="sd-warn-text">{t('noAllowedModels')}</p>
             ) : null}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-                <div style={rowStyle}>
-                    <label style={fieldLabelStyle}>{t('defaultProvider')}</label>
+            <div className="sd-grid">
+                <div className="sd-field">
+                    <label className="sd-label">{t('defaultProvider')}</label>
                     {noAllowed ? (
-                        <div style={{ color: token.labelSecondary, fontSize: 12 }}>—</div>
+                        <div className="sd-note">—</div>
                     ) : (
                         <select
-                            style={selectStyle}
+                            className="sd-select"
                             value={draft.provider}
                             disabled={!writable || providers.length === 0}
                             onChange={(e) => setDraft((d) => ({ provider: e.target.value, model: '', reasoningEffort: '' }))}
@@ -243,13 +241,13 @@ function DefaultModelRow({ controller, routes, modelSelectionEnabled, writable, 
                         </select>
                     )}
                 </div>
-                <div style={rowStyle}>
-                    <label style={fieldLabelStyle}>{t('defaultModel')}</label>
+                <div className="sd-field">
+                    <label className="sd-label">{t('defaultModel')}</label>
                     {noAllowed ? (
-                        <div style={{ color: token.labelSecondary, fontSize: 12 }}>—</div>
+                        <div className="sd-note">—</div>
                     ) : (
                         <select
-                            style={selectStyle}
+                            className="sd-select"
                             value={draft.model}
                             disabled={!writable || modelOptions.length === 0}
                             onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value, reasoningEffort: '' }))}
@@ -261,10 +259,10 @@ function DefaultModelRow({ controller, routes, modelSelectionEnabled, writable, 
                         </select>
                     )}
                 </div>
-                <div style={rowStyle}>
-                    <label style={fieldLabelStyle}>{t('defaultReasoningEffort')}</label>
+                <div className="sd-field">
+                    <label className="sd-label">{t('defaultReasoningEffort')}</label>
                     <input
-                        style={textInputStyle}
+                        className="sd-input"
                         value={draft.reasoningEffort}
                         disabled={!writable}
                         placeholder={modelSelectionEnabled ? '' : '(advisory)'}
@@ -272,10 +270,10 @@ function DefaultModelRow({ controller, routes, modelSelectionEnabled, writable, 
                     />
                 </div>
             </div>
-            {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-            {done ? <div style={{ color: token.accent, fontSize: 12 }}>{t('restoreDone')}</div> : null}
-            <div style={{ display: 'flex', gap: 8 }}>
-                <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
+            {failure !== undefined ? <p className="sd-error-text">{failure}</p> : null}
+            {done ? <p className="sd-success-text">{t('restoreDone')}</p> : null}
+            <div className="sd-actions sd-actions-end">
+                <button type="button" className="sd-btn sd-btn-primary" disabled={!writable || busy} onClick={() => void save()}>{t('save')}</button>
             </div>
         </div>
     );
@@ -328,67 +326,72 @@ function RolesBlock({ controller, routes, writable, roles, defaultRole, t }: {
     };
 
     return (
-        <div style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                <strong style={{ color: token.labelPrimary, fontSize: 14 }}>{t('rolesHeading')}</strong>
-                <button style={ghostButtonStyle} disabled={!writable || adding} onClick={beginAdd}>{t('addRole')}</button>
+        <div className="sd-group">
+            <div className="sd-head">
+                <div className="sd-head-main">
+                    <strong className="sd-title">{t('rolesHeading')}</strong>
+                    <p className="sd-hint">{t('rolesHint')}</p>
+                </div>
+                <button type="button" className="sd-btn sd-btn-ghost" disabled={!writable || adding} onClick={beginAdd}>{t('addRole')}</button>
             </div>
-            <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '18px' }}>{t('rolesHint')}</p>
 
             {adding ? (
-                <div style={{ border: '1px dashed ' + token.border, borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={rowStyle}>
-                        <label style={fieldLabelStyle}>{t('roleDisplayName')}</label>
+                <div className="sd-card sd-card-inset">
+                    <strong className="sd-title">{t('addRole')}</strong>
+                    <div className="sd-field">
+                        <label className="sd-label">{t('roleDisplayName')}</label>
                         <input
-                            style={textInputStyle}
+                            className="sd-input"
                             value={draft.displayName}
                             placeholder={t('displayNamePlaceholder')}
                             onChange={(e) => setDraft((d) => ({ ...d, displayName: e.target.value }))}
                         />
                     </div>
-                    <div style={rowStyle}>
-                        <label style={fieldLabelStyle}>{t('roleDescription')}</label>
+                    <div className="sd-field">
+                        <label className="sd-label">{t('roleDescription')}</label>
                         <textarea
-                            style={textAreaStyle}
+                            className="sd-textarea"
                             value={draft.description}
                             placeholder={t('descriptionPlaceholder')}
                             onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
                         />
                     </div>
-                    <div style={rowStyle}>
-                        <label style={fieldLabelStyle}>{t('agentPreset')}</label>
+                    <div className="sd-field">
+                        <label className="sd-label">{t('agentPreset')}</label>
                         <input
-                            style={textInputStyle}
+                            className="sd-input"
                             value={draft.agentPreset ?? ''}
                             placeholder={t('agentPresetPlaceholder')}
                             onChange={(e) => setDraft((d) => ({ ...d, agentPreset: e.target.value }))}
                         />
-                        <span style={{ color: token.labelTertiary, fontSize: 12 }}>{t('agentPresetHint')}</span>
+                        <span className="sd-note">{t('agentPresetHint')}</span>
                     </div>
-                    {failure !== undefined ? <div style={{ color: token.danger, fontSize: 12 }}>{failure}</div> : null}
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button style={primaryButtonStyle} disabled={!writable || busy} onClick={() => void saveAdd()}>{t('addRole')}</button>
-                        <button style={ghostButtonStyle} disabled={busy} onClick={() => setAdding(false)}>{t('cancel')}</button>
+                    {failure !== undefined ? <p className="sd-error-text">{failure}</p> : null}
+                    <div className="sd-actions sd-actions-end">
+                        <button type="button" className="sd-btn sd-btn-primary" disabled={!writable || busy} onClick={() => void saveAdd()}>{t('addRole')}</button>
+                        <button type="button" className="sd-btn sd-btn-ghost" disabled={busy} onClick={() => setAdding(false)}>{t('cancel')}</button>
                     </div>
                 </div>
             ) : null}
 
             {roles.length === 0 && !adding ? (
-                <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13 }}>{t('emptyRoles')}</p>
+                <p className="sd-empty">{t('emptyRoles')}</p>
             ) : (
-                roles.map(([id, role]) => (
-                    <RoleCard
-                        key={id}
-                        id={id}
-                        role={role}
-                        isDefault={defaultRole === id}
-                        routes={routes}
-                        t={t}
-                        onSave={(d: RoleDraft) => controller.updateRole(id, role, d)}
-                        onDelete={() => controller.removeRole(id)}
-                        onSetDefault={() => controller.setDefaultRole(id)}
-                    />
-                ))
+                <div className="sd-list">
+                    {roles.map(([id, role]) => (
+                        <RoleCard
+                            key={id}
+                            id={id}
+                            role={role}
+                            isDefault={defaultRole === id}
+                            routes={routes}
+                            t={t}
+                            onSave={(d: RoleDraft) => controller.updateRole(id, role, d)}
+                            onDelete={() => controller.removeRole(id)}
+                            onSetDefault={() => controller.setDefaultRole(id)}
+                        />
+                    ))}
+                </div>
             )}
         </div>
     );

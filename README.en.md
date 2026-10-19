@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 Subagent Director（子代理导演）
+# 🎬 Subagent Director
 
 **Assign an LLM provider and model to DeepSeek Harness subagents, and plan the main-agent / subagent division of labor with role templates**
 
@@ -28,7 +28,7 @@
 - **Role templates** — define roles such as "code reviewer" and "translator": a responsibility description (shown to the main agent) + an optional Agent Preset (persona/tool composition) + an optional model binding;
 - **Four-layer fallback chain** — per-call args > role binding > plugin default > inherit from the parent agent (zero intrusion when unconfigured);
 - **Main-agent guidance** — the system prompt auto-injects the role list, so the main agent knows when to delegate to whom;
-- **Config UI** — visual configuration inside the plugin detail page (plugin list → dsh-plugin-subagent-director; default models + add/edit/remove role cards); the settings panel no longer hosts this plugin's configuration;
+- **Config UI** — visual configuration inside the plugin detail page (plugin list → dsh-plugin-subagent-director; default models + add/edit/remove role templates), styled with the official DSH design language for both light and dark themes; the settings panel no longer hosts this plugin's configuration;
 - **Continuable background** — returns a durable subagent id for ongoing delegation with send_message;
 - **Release continuable children** — a model-facing `close_subagent(subagent_id)` tool plus a "terminate continuable state" button on the subagent session page, actively releasing completed but still-resident continuable subagents (internally calling DSH core's `drainChildren`);
 - **Observability** — when a subagent session is opened, its actual provider/model is shown below the composer (the real route is read from the session's `request/header` records; graceful degradation when unavailable);
@@ -197,13 +197,13 @@ Since DSH 0.2.1 the compatibility gate prefers `engines.dsh`. This plugin declar
 
 > Only versions that were **actually run** are listed; untested versions are omitted.
 
-v0.6.0-beta.1 targets DSH **0.2.1-rc.1+**. DSH 0.2.1 unified the subagent seam on `startActivation` / `drainChildren` and removed per-request persona/toolFilter; this release migrates persona/tool composition to an independent Agent Preset and adds an `agentPreset` field to role templates. **Breaking**: no longer compatible with 0.1.x / 0.2.0-rc.1; use **0.5.6** on older hosts.
+v0.6.0-beta.2 targets DSH **0.2.1-rc.1+**. 0.6.0-beta.1 unified the subagent seam on `startActivation` / `drainChildren` and migrated persona/tool composition to an independent Agent Preset, adding an `agentPreset` field to role templates; 0.6.0-beta.2 rebuilds the settings UI on the official DSH design language (theme tokens, type scale, unified cards / buttons / switches / focus rings, light and dark themes), with no functional or protocol change. **Breaking**: 0.1.x / 0.2.0-rc.1 remain unsupported; use **0.5.6** on older hosts.
 
 ## 🛠️ 开发 / Develop
 
 ```bash
 npm install
-npm test          # vitest（253 用例）
+npm test          # vitest (297 tests)
 npm run typecheck
 npm run build     # host(tsc) + client(rolldown bundle)
 ```

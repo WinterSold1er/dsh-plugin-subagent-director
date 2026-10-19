@@ -38,6 +38,7 @@ import type { SubagentOptionsSectionInjected } from './SubagentOptionsSection.js
 import { SubagentOptionsSection } from './SubagentOptionsSection.js';
 import { SubagentModelDock, type SubagentModelDockInjected } from './SubagentModelDock.js';
 import { SubagentCloseAction, type SubagentCloseActionInjected } from './SubagentCloseAction.js';
+import { ensureUiStyles } from './ui.js';
 
 /** Dictionary namespace owned by Subagent Director (bilingual, typed). */
 export const NS = 'settings.subagentDirector';
@@ -70,6 +71,9 @@ export const inject = ['slots', 'locale', 'connection', 'remote'];
  * provider topology).
  */
 export function apply(ctx: ClientContext): void {
+  // Additive design-system stylesheet for every client surface this plugin
+  // contributes (plugin-page section, composer dock, session-header action).
+  ensureUiStyles();
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'subagent-director: copy dictionaries');
 
   // ctx.get('connection') is typed as the host HostConnectionHandle when the
