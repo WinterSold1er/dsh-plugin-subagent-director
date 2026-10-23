@@ -1,12 +1,13 @@
 /**
  * Subagent Director — browser half (DSH client plugin).
  *
- * Registers the bundle configuration entry (`plugins.bundle.config`, keyed by
- * the npm package name) that lets a user pick the default LLM provider/model
- * for subagents and manage role templates (each binds a persona and optional
- * provider/model to a delegation). It renders on this plugin's own page in the
- * DSH plugin manager (插件列表 → dsh-plugin-subagent-director) — the DSH
- * settings panel is no longer used for configuration. Data flows through the
+ * Registers the configuration UI twice, both seats existing on DSH 0.2.1-rc.2:
+ * the bundle configuration entry (`plugins.bundle.config`, keyed by the npm
+ * package name, on this plugin's own page in the DSH plugin manager:
+ * 插件列表 → dsh-plugin-subagent-director) and the `settings.section` seat in
+ * the DSH settings panel. Either surface lets a user pick the default LLM
+ * provider/model for subagents and manage role templates (each binds a persona
+ * and optional provider/model to a delegation). Data flows through the
  * connection's wire API into a snapshot store; writes travel as path ops
  * through settings.mutate with an optimistic-revision lock.
  *
