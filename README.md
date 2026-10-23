@@ -31,7 +31,7 @@
 - **角色模板** —— 定义「代码审查员」「翻译员」等角色：职责描述（给主代理看）+ 可选 Agent Preset（persona/工具组合）+ 可选模型绑定；
 - **四级回退链** —— 单次调用参数 > 角色绑定 > 插件默认 > 继承主代理（未配置时零侵入）；
 - **主代理指引** —— 系统提示自动注入角色清单，主代理知道何时委派给谁；
-- **配置界面** —— 插件详情页内可视化配置（插件列表 → dsh-plugin-subagent-director；默认模型 + 角色模板增删改），视觉与 DSH 官方设置页设计语言一致，亮暗主题通用；设置面板不再承载本插件配置；
+- **配置界面** —— **双注册**入口：设置页保留 `settings.section`（id `subagent-director`），插件详情页同时经 `plugins.bundle.config`（key 为 npm 包名 `dsh-plugin-subagent-director`，即插件列表 → 该插件页的配置区）暴露同一份可视化配置（默认模型 + 角色模板增删改），视觉与 DSH 官方设置页设计语言一致，亮暗主题通用；
 - **continuable 后台** —— 返回可续聊子代理 id，配合 send_message 持续委派；
 - **释放可持续子代理** —— 模型可见工具 `close_subagent(subagent_id)` 与子代理会话
   页的「终止可持续状态」按钮，主动释放已完成但仍驻留的 continuable 子代理
@@ -166,6 +166,10 @@ orchestrate mode」等变体），该轮会话即自动进入纯编排模式—�
 `sessionProjections` 缺失时命令返回明确错误而不是假装成功，`commands` 缺失时
 命令不注册，插件其余功能不受影响。
 
+**本地编排强制（工具权限）**：`/using-subagents` 与 `/using-agent-team` 开启编排时，
+主代理只允许调用勾选的工具，其余工具调用由 `orchestrate-guard` 在工具执行前拦截
+（`src/enforcement.ts` 判定档位：`strict` / `lenient` / `none`）。
+
 ## 🧭 与官方子代理选择器的适配 / Official Subagent Selector Adaptation
 
 DSH alpha.4 起，官方内置 subagent 的模型选择收敛到 `subagent-model-selection` 设置段（`allowedModels` 授权列表）。本插件 v0.5.0 完全适配该机制：
@@ -198,7 +202,7 @@ DSH 0.2.1 起兼容门禁优先读取 `engines.dsh`。本插件声明 **`engines
 
 > 只列出**实际跑过**的版本；未实测的不列。
 
-v0.6.0-beta.2 支持 DSH **0.2.1-rc.1+**。0.6.0-beta.1 把子代理接缝统一到 `startActivation` / `drainChildren`，并按官方方向把 persona 与工具组合迁移到 **Agent Preset**（角色模板新增 `agentPreset` 字段）；0.6.0-beta.2 在此基础上按 DSH 官方设计语言重做了设置界面（主题令牌、字号阶梯、统一卡片 / 按钮 / 开关 / 焦点环，亮暗主题一致），功能与协议不变。**破坏性**：0.1.x / 0.2.0-rc.1 仍不兼容，旧宿主请继续使用 **0.5.6**。
+v0.6.0-beta.3 支持 DSH **0.2.1-rc.1+**。beta.3 = 合并上游 **0.6.0-beta.2**（子代理接缝统一到 `startActivation` / `drainChildren`、persona 与工具组合迁移到 **Agent Preset**、按官方设计语言重做设置界面）+ 保留本地独有功能（角色模板设置 UI、编排强制 / 工具权限、`/using-subagents`、`/using-agent-team`、`/orchestrate`、SubagentModelDock、settings 桥接的双注册）。0.6.0-beta.1 把子代理接缝统一到 `startActivation` / `drainChildren`，并按官方方向把 persona 与工具组合迁移到 **Agent Preset**（角色模板新增 `agentPreset` 字段）；0.6.0-beta.2 在此基础上按 DSH 官方设计语言重做了设置界面（主题令牌、字号阶梯、统一卡片 / 按钮 / 开关 / 焦点环，亮暗主题一致），功能与协议不变。**破坏性**：0.1.x / 0.2.0-rc.1 仍不兼容，旧宿主请继续使用 **0.5.6**。
 
 ## 🛠️ 开发 / Develop
 

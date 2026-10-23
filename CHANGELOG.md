@@ -2,6 +2,14 @@
 
 本项目的所有显著变更都会记录在此文件中。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## 0.6.0-beta.3 - 2026-10-24
+
+### 变更
+
+- **合并上游 0.6.0-beta.2**（适配 DSH 0.2.1-rc.x）：子代理接缝统一为 `startActivation` / `drainChildren`、persona 与工具组合迁移到 Agent Preset、设置界面视觉重做。
+- **保留本地独有功能并继续维护**：角色模板设置 UI、编排强制 / 工具权限（`enforcement`、`orchestrate-guard`）、`/using-subagents`、`/using-agent-team`、`/orchestrate`、SubagentModelDock、settings 桥接（`settings.section` 与 `plugins.bundle.config` 双注册）。
+- **兼容矩阵**：DSH 0.2.1-rc.1 / 0.2.1-rc.2 compatible；`engines.dsh` 与 peerDependencies 收敛到 `>=0.2.1-rc.1`。
+
 ## 0.6.0-beta.2 - 2026-10-19
 
 ### 新增

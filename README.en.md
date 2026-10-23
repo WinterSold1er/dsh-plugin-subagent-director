@@ -28,7 +28,7 @@
 - **Role templates** — define roles such as "code reviewer" and "translator": a responsibility description (shown to the main agent) + an optional Agent Preset (persona/tool composition) + an optional model binding;
 - **Four-layer fallback chain** — per-call args > role binding > plugin default > inherit from the parent agent (zero intrusion when unconfigured);
 - **Main-agent guidance** — the system prompt auto-injects the role list, so the main agent knows when to delegate to whom;
-- **Config UI** — visual configuration inside the plugin detail page (plugin list → dsh-plugin-subagent-director; default models + add/edit/remove role templates), styled with the official DSH design language for both light and dark themes; the settings panel no longer hosts this plugin's configuration;
+- **Config UI** — **dual registration**: `settings.section` (id `subagent-director`) is still registered on the settings page, and `plugins.bundle.config` (key `dsh-plugin-subagent-director`) exposes the same visual configuration on this plugin's own page in the plugin manager (plugin list → dsh-plugin-subagent-director); both render one and the same config UI (default models + add/edit/remove role templates), styled with the official DSH design language for both light and dark themes;
 - **Continuable background** — returns a durable subagent id for ongoing delegation with send_message;
 - **Release continuable children** — a model-facing `close_subagent(subagent_id)` tool plus a "terminate continuable state" button on the subagent session page, actively releasing completed but still-resident continuable subagents (internally calling DSH core's `drainChildren`);
 - **Observability** — when a subagent session is opened, its actual provider/model is shown below the composer (the real route is read from the session's `request/header` records; graceful degradation when unavailable);
@@ -167,6 +167,11 @@ This mode depends on the host's `commands` and `sessionProjections` services: st
 error instead of pretending to succeed, and when `commands` is missing the command is simply
 not registered and the rest of the plugin is unaffected.
 
+**Local orchestration enforcement (tool permissions)**: when orchestration is active via
+`/using-subagents` or `/using-agent-team`, the main agent may only call the tools selected there;
+every other tool call is intercepted by `orchestrate-guard` before the tool executes
+(`src/enforcement.ts` resolves the tier: `strict` / `lenient` / `none`).
+
 ## 🧭 与官方子代理选择器的适配 / Official Subagent Selector Adaptation
 
 Since DSH alpha.4, the built-in subagent's model selection converges on the official `subagent-model-selection` settings section (the `allowedModels` allowlist). This plugin v0.5.0 fully adapts to that mechanism:
@@ -203,7 +208,7 @@ Since DSH 0.2.1 the compatibility gate prefers `engines.dsh`. This plugin declar
 
 > Only versions that were **actually run** are listed; untested versions are omitted.
 
-v0.6.0-beta.2 targets DSH **0.2.1-rc.1+**. 0.6.0-beta.1 unified the subagent seam on `startActivation` / `drainChildren` and migrated persona/tool composition to an independent Agent Preset, adding an `agentPreset` field to role templates; 0.6.0-beta.2 rebuilds the settings UI on the official DSH design language (theme tokens, type scale, unified cards / buttons / switches / focus rings, light and dark themes), with no functional or protocol change. **Breaking**: 0.1.x / 0.2.0-rc.1 remain unsupported; use **0.5.6** on older hosts.
+v0.6.0-beta.3 supports DSH **0.2.1-rc.1+**. beta.3 = upstream **0.6.0-beta.2** merged in (the subagent seam unified on `startActivation` / `drainChildren`, persona/tool composition migrated to an independent Agent Preset, the settings UI rebuilt on the official design language) + the local-only features kept (the role-template settings UI, orchestration enforcement / tool permissions, `/using-subagents`, `/using-agent-team`, `/orchestrate`, SubagentModelDock, and the dual registration of the settings bridge). 0.6.0-beta.1 unified the subagent seam on `startActivation` / `drainChildren` and migrated persona/tool composition to an independent Agent Preset, adding an `agentPreset` field to role templates; 0.6.0-beta.2 rebuilds the settings UI on the official DSH design language (theme tokens, type scale, unified cards / buttons / switches / focus rings, light and dark themes), with no functional or protocol change. **Breaking**: 0.1.x / 0.2.0-rc.1 remain unsupported; use **0.5.6** on older hosts.
 
 ## 🛠️ 开发 / Develop
 

@@ -8,8 +8,10 @@
  * contract — the regression that the rc-era `dsh-client-runtime` import
  * broke at bundle load:
  *
- *   a) the settings section, the composer-dock readout, and the header close
- *      action all register through the slots seam;
+ *   a) the client entry registers twice through the slots seam — the settings
+ *      section (`settings.section`, id `subagent-director`) and the bundle
+ *      configuration entry (`plugins.bundle.config`, keyed by the npm package
+ *      name) — alongside the composer-dock readout and the header close action;
  *   b) the dock's injected face carries the alpha.4 chat-snapshot hook
  *      (`useChatSnapshot`) next to the RPC caller — the data source that
  *      replaced the removed `ConversationSnapshot.nodes` owner prop;
@@ -25,14 +27,14 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 
 /** Fake slots registry recording registrations and running inject fns. */
 function slotsStub() {
-  const registrations: Array<{ name: string; id: string; inject?: () => unknown }> = [];
+  const registrations: Array<{ name: string; id?: string; key?: string; inject?: () => unknown }> = [];
   return {
     registrations,
     inject: (_key: string, fn: () => unknown) => {
       fn();
       return () => {};
     },
-    register: (opts: { name: string; id: string; inject?: () => unknown }, _component: unknown) => {
+    register: (opts: { name: string; id?: string; key?: string; inject?: () => unknown }, _component: unknown) => {
       registrations.push(opts);
       return () => {};
     },
@@ -84,7 +86,7 @@ function loadClient(ctx: Context, slots: ReturnType<typeof slotsStub>, locale: R
 }
 
 describe('real cordis probe — client half mounts on alpha.4-shaped services', () => {
-  it('registers the settings section, the composer dock, and the header close action (no input left button)', async () => {
+  it('registers the settings section AND the bundle configuration, the composer dock, and the header close action (no input left button)', async () => {
     const ctx = new Context();
     const slots = slotsStub();
     const locale = localeStub();
@@ -95,6 +97,7 @@ describe('real cordis probe — client half mounts on alpha.4-shaped services', 
 
     const names = slots.registrations.map((r) => r.name);
     expect(names).toContain('settings.section');
+    expect(names).toContain('plugins.bundle.config');
     expect(names).toContain('conversation.composer.dock');
     expect(names).toContain('conversation.session.header.actions');
     expect(names).not.toContain('conversation.input.left');
@@ -103,9 +106,15 @@ describe('real cordis probe — client half mounts on alpha.4-shaped services', 
       expect.arrayContaining(['settings/document-updated', 'llm/adapters-updated']),
     );
 
+    // The settings section registers under its stable section id.
     const section = slots.registrations.find((r) => r.name === 'settings.section');
-    expect(section).toBeDefined();
+    expect(section?.id).toBe('subagent-director');
     expect((section as any).icon).toBeDefined();
+
+    // The config entry must be keyed by the npm package name, otherwise the
+    // plugin manager never renders it (configured = ledger.bundles.has(pkg.name)).
+    const config = slots.registrations.find((r) => r.name === 'plugins.bundle.config');
+    expect(config?.key).toBe('dsh-plugin-subagent-director');
   });
 
   it('injects the alpha.4 chat-snapshot hook into the dock entry', async () => {
