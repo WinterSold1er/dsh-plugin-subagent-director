@@ -5,24 +5,25 @@
  * selecting an LLM route and/or a named role template. It resolves the four-layer
  * fallback chain via the pure resolveRoute (design section 6), validates the
  * resolution against live runtime facts, and assembles a SubagentStartRequest
- * on ctx.subagents.start(...) exactly like dsh-workflow-worker-thread's
- * startChild and dsh-tool-subagent's one-shot path.
+ * on ctx.subagents.startActivation(...) exactly like dsh-workflow-worker-thread's
+ * startChild and dsh-tool-subagent's activation path.
  *
  * Two provider namespaces coexist and MUST NOT be confused (design section 14, R2):
  *   - config.subagentProvider is the subagent TRANSPORT provider name handed
- *     to ctx.subagents.start(name, ...) (e.g. spawn).
+ *     as the spec's `provider` field to ctx.subagents.startActivation(spec) (e.g. spawn).
  *   - the resolved agentOptions.provider is an LLM route served by an adapter
  *     (e.g. deepseek-official).
  *
- * Execution contract (schema/execute mirror dsh-tool-subagent):
- *   - foreground is the core path: await run.result, throw a stop-reason
- *     error for a non-completed child, dispose idempotently, return
- *     { kind: foreground, runId, output }.
- *   - one-shot background mirrors the official Task registration on
- *     ctx.jobs.start({ kind: subagent, ... }) returning { kind: background, jobId }.
- *   - continuable runs the child through ctx.subagents.startContinuable() and
- *     returns { kind: continuable, subagentId } (the durable child id), which the
- *     parent later follows up on with send_message (M3a / FR-5.3).
+ * Execution contract (schema/execute mirror dsh-tool-subagent on the 0.2.x
+ * startActivation seam):
+ *   - foreground is the core path: startActivation with delivery 'caller',
+ *     await activation.result, throw a stop-reason error for a non-completed
+ *     child, dispose idempotently, return { kind: foreground, runId, output }.
+ *   - background runs the child through startActivation with delivery 'parent'
+ *     (the runtime owns result delivery and notifies the parent model) and
+ *     returns the durable child id immediately: { kind: continuable, subagentId }
+ *     when the provider is continuable (the parent later follows up with
+ *     send_message), else { kind: background, jobId } for a one-shot child.
  *
  * reasoningEffort: alpha.4 `AgentOptions` carries `reasoningEffort?:
  * ReasoningEffortId` (dsh-agent runtime-types), so the resolver injects it
@@ -37,9 +38,9 @@ import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent';
 import { type ParameterSchemaSpec, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools';
 import type { JsonValue } from '@deepseek-ai/dsh-util-values';
 import type { ContentBlock } from '@deepseek-ai/dsh-llm';
-import type { SubagentProvider } from '@deepseek-ai/dsh-subagent';
+import type { SubagentCapabilities, SubagentProvider } from '@deepseek-ai/dsh-subagent';
 import type { DirectorConfig } from './config.js';
-import { type RouteToolFilter, type SubagentDirectorSettings } from './route-resolver.js';
+import { type SubagentDirectorSettings } from './route-resolver.js';
 /** Stable log namespace prefix for delegation/tool diagnostics (design section 10). */
 export declare const DELEGATION_TOOL_PREFIX = "subagent-director";
 /**
@@ -97,10 +98,12 @@ export interface ModelSelectionRead {
     }> | undefined;
 }
 /**
- * Read the official `subagent-model-selection` section through the settings
- * seam at execute time (the official dsh-tool-subagent owns this namespace).
- * `settings.get` throws for namespace values the seam rejects, so the read is
- * guarded — an unreadable section simply means no authorized list.
+ * Read the official model-selection settings section through the settings seam
+ * at execute time (the official dsh-tool-subagent owns this namespace). On
+ * 0.1.7 there is no `settings.get(ns)`; the live value is read from
+ * `describe()`'s descriptor for the entry id `subagent-model-selection-settings`
+ * (see readNamespaceValue). An inactive/unreadable section simply means no
+ * authorized list.
  */
 export declare function readModelSelection(ctx: Context): ModelSelectionRead;
 /** The resolved execution route for one delegation call. */
@@ -145,18 +148,15 @@ export declare function renderDelegationResult(value: DelegationResult | {
 /**
  * Pure capability gate (extracted from execute for unit testing, behavioral
  * no-op): a resolved delegation feature demands a transport-provider capability,
- * and its absence is a hard error (FR-8.1 / design 7.3). persona, toolFilter,
- * and a numeric maxDepth each require the matching capability flag.
+ * and its absence is a hard error (FR-8.1 / design 7.3). An independent Agent
+ * Preset requires `agentPreset` support and a provider that does not inherit
+ * the parent conversation; a numeric maxDepth requires `depthLimit`.
  */
 export declare function assertDelegationCapabilities(options: {
     providerName: string;
-    persona?: string;
-    toolFilter?: RouteToolFilter;
-    capabilities: {
-        persona: boolean;
-        toolFilter: boolean;
-        depthLimit: boolean;
-    };
+    agentPreset?: string;
+    capabilities: SubagentCapabilities;
+    inheritsParentContext?: boolean;
     maxDepth?: number | 'provider-managed';
 }): void;
 /** The route-derived fields that flow into a SubagentStartRequest body. */
@@ -165,22 +165,25 @@ export interface SubagentRequestParts {
     prompt: ContentBlock[];
     parent: Agent;
     agentOptions?: Pick<AgentOptions, 'provider' | 'model' | 'reasoningEffort'>;
-    persona?: string;
-    toolFilter?: RouteToolFilter;
+    agentPreset?: string;
     maxDepth?: number;
 }
 /**
  * Pure request-body assembly (extracted from execute for unit testing,
- * behavioral no-op): persona and toolFilter propagate into the request only
- * when the role resolved them, so a bare delegation stays zero-intrusion.
+ * behavioral no-op): an Agent Preset propagates into the request only when the
+ * role resolved one, so a bare delegation stays zero-intrusion. DSH 0.2.1
+ * removed per-request persona/toolFilter; role persona/tool composition now
+ * lives inside the selected Agent Preset.
+ *
+ * On the 0.2.x startActivation seam the `label` and `signal` are hoisted to
+ * the activation spec, so the inner request omits them (the spec carries
+ * `label: parts.description` and `signal: exec.signal`).
  */
 export declare function buildSubagentRequest<Parts extends SubagentRequestParts>(parts: Parts): {
-    label: string;
     prompt: ContentBlock[];
     parent: Agent;
     agentOptions?: Pick<AgentOptions, "model" | "provider" | "reasoningEffort"> | undefined;
-    persona?: string | undefined;
-    toolFilter?: RouteToolFilter | undefined;
+    agentPreset?: string | undefined;
     maxDepth?: number | undefined;
 };
 /**

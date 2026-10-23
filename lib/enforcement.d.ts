@@ -13,16 +13,6 @@ export interface EnforcementConfigInput {
     orchestrateRoundIntercept?: boolean;
     orchestrateEnforcement?: OrchestrateEnforcement;
 }
-/**
- * Resolve the effective OrchestrateEnforcement level from configuration input.
- * Priority:
- *  1. If config is absent, baseline is 'strict'.
- *  2. If orchestrateInterceptTools is explicitly false, enforcement is 'none'.
- *  3. If orchestrateRoundIntercept is explicitly false, enforcement is 'lenient'.
- *  4. If orchestrateRoundIntercept is explicitly true, enforcement is 'strict'.
- *  5. Fall back to legacy orchestrateEnforcement if present ('strict' | 'lenient' | 'none').
- *  6. Baseline when unconfigured (including orchestrateInterceptTools: true alone) is 'strict'.
- */
 export declare function resolveEnforcementLevel(config?: EnforcementConfigInput | null): OrchestrateEnforcement;
 /**
  * Layered enforcement resolution:

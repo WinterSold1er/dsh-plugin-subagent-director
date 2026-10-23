@@ -1,55 +1,45 @@
-# 🎬 Subagent Director（子代理导演）
+<div align="center">
 
-> 为 DeepSeek Harness 的 subagent 指定 LLM 供应商与模型，并用「角色模板」规划主代理与子代理的分工。
+# 🎬 Subagent Director 子代理导演
 
-<p align="center">
-  <img alt="npm version" src="https://img.shields.io/npm/v/dsh-plugin-subagent-director?label=npm">
-  <img alt="license" src="https://img.shields.io/npm/l/dsh-plugin-subagent-director">
-  <img alt="DeepSeek Harness" src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.2--rc.1-blue">
-  <img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg">
-</p>
+**为 DeepSeek Harness 的 subagent 指定 LLM 供应商与模型，并用「角色模板」规划主代理与子代理的分工**
 
-[English](#english) · [特性](#特性) · [官方选择器适配](#与官方子代理选择器的适配) · [快速开始](#快速开始) · [角色模板](#角色模板) · [术语](#术语) · [开发](#开发) · [FAQ](#faq)
+[![npm version](https://img.shields.io/npm/v/dsh-plugin-subagent-director?style=flat-square&logo=npm)](https://www.npmjs.com/package/dsh-plugin-subagent-director)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-plugin-subagent-director?style=flat-square&logo=npm)](https://www.npmjs.com/package/dsh-plugin-subagent-director)
+[![license](https://img.shields.io/npm/l/dsh-plugin-subagent-director?style=flat-square)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=flat-square&logo=node.js)](package.json)
+[![GitHub release](https://img.shields.io/github/v/release/SeverusZh/dsh-plugin-subagent-director?style=flat-square&logo=github)](https://github.com/SeverusZh/dsh-plugin-subagent-director/releases)
+[![GitHub stars](https://img.shields.io/github/stars/SeverusZh/dsh-plugin-subagent-director?style=flat-square&logo=github)](https://github.com/SeverusZh/dsh-plugin-subagent-director)
+[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.1%20%2F%20rc.2-blue?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
+</div>
+
+**Subagent Director** 是一个 out-of-tree 的 DeepSeek Harness 插件，用于为 subagent 指定 LLM 供应商与模型，并通过「角色模板」规划主代理与子代理的分工。
 
 ---
 
-## 特性
+## ✨ 功能特性 / Features
 
-- **供应商与模型选择** —— 为 subagent 配置默认 LLM 供应商（route）与模型；每次委派也可以由模型显式指定；
+- **供应商与模型选择** —— 为 subagent 配置默认 LLM 供应商（route）与模型；每次委派也可以由模型显式指定 `provider` / `model`；
 - **受控的模型选择** —— provider/model 只从官方 `subagent-model-selection` 授权列表
   （`allowedModels`）中选择：显式传入未授权路由为硬错误，角色/默认层未授权路由被
   丢弃并回退继承（不与官方 dsh-tool-subagent 双重写模型路由）；
-- **配置热更新** —— settings.yaml / 设置面板的改动即时生效，无需重启；
+- **配置热更新** —— settings.yaml / 插件配置页的改动即时生效，无需重启；
 - **角色按显示名引用** —— `role` 参数未命中 id 时按 `displayName` 精确匹配（重名
   取定义顺序第一个并提示），模型按显示名也能命中模板；
-- **角色模板** —— 定义「代码审查员」「翻译员」等角色：职责描述（给主代理看）+ persona（注入子代理）+ 可选模型绑定；
+- **角色模板** —— 定义「代码审查员」「翻译员」等角色：职责描述（给主代理看）+ 可选 Agent Preset（persona/工具组合）+ 可选模型绑定；
 - **四级回退链** —— 单次调用参数 > 角色绑定 > 插件默认 > 继承主代理（未配置时零侵入）；
 - **主代理指引** —— 系统提示自动注入角色清单，主代理知道何时委派给谁；
-- **设置界面** —— DSH 设置面板内可视化配置（默认模型 + 角色卡片增删改）；
+- **配置界面** —— 插件详情页内可视化配置（插件列表 → dsh-plugin-subagent-director；默认模型 + 角色模板增删改），视觉与 DSH 官方设置页设计语言一致，亮暗主题通用；设置面板不再承载本插件配置；
 - **continuable 后台** —— 返回可续聊子代理 id，配合 send_message 持续委派；
 - **释放可持续子代理** —— 模型可见工具 `close_subagent(subagent_id)` 与子代理会话
   页的「终止可持续状态」按钮，主动释放已完成但仍驻留的 continuable 子代理
-  （内部调用 DSH 核心 `drainContinuableChildren`）；
+  （内部调用 DSH 核心 `drainChildren`）；
 - **可观测性** —— 打开子代理会话时，composer 下方显示其实际运行的供应商/模型
   （从会话 `request/header` 记录读取真实路由；读不到时优雅降级）；
 
-## 与官方子代理选择器的适配
-
-> **兼容性**：v0.5.0 支持 DSH **0.1.2-alpha.4+**，已在当前运行时 **0.1.2-rc.1** 实测（`alpha4-probe` + real-cordis 探针 278/278 通过，实测 alpha.4/alpha.5/0.1.2-rc.1 依赖集）。旧版 DSH（0.1.0-rc.6 及更早）请使用最后兼容的 npm 版本 **0.4.0**。
-
-DSH alpha.4 起，官方内置 subagent 的模型选择收敛到 `subagent-model-selection` 设置段（`allowedModels` 授权列表）。本插件 v0.5.0 完全适配该机制：
-
-- **只从授权列表选择** —— `route-resolver` 把 provider/model 约束在官方
-  `subagent-model-selection.allowedModels` 内：显式传入未授权路由为**硬错误**；
-  插件默认层 / 角色绑定层的未授权路由被**丢弃并回退继承主代理**；
-- **不再双重写模型路由** —— 移除 rc 时代的 `applyDefaultRoute` 补丁缝，插件与
-  官方选择器不会各自覆盖同一条路由（设置面板可选的 provider/model 即官方
-  「插件-插件配置-Subagent池」里的选项）；
-- **客户端半同步移植** —— 移除 rc 时代对 `@deepseek-ai/dsh-client-runtime/client`
-  的全部引用（alpha.4/alpha.5 宿主均不携带该包），dock 读数改读 alpha.4 会话
-  `request/header` 记录，设置页在 alpha.4/alpha.5 宿主均可正常加载。
-
-## 快速开始
+## 📦 安装 / Install
 
 ### 安装
 
@@ -60,7 +50,43 @@ dsh plugin --profile <name> add dsh-plugin-subagent-director
 或本地开发时以 `dsh plugin --profile <name> add link:<绝对路径>` 挂载本地 checkout
 （配置示例见下）。
 
-### 配置（cordis.patch.yml，可选）
+### 安装注意事项
+
+- 推荐直接 `dsh plugin --profile <name> add dsh-plugin-subagent-director`（npm
+  发布版已包含构建产物，peer 依赖由 DSH 的 `$DSH_HOME/profiles/node_modules`
+  fallback 提供，开箱即用）。
+- 本地 `link:` 开发时：git 仓库不包含 `lib/`（已被 .gitignore），挂载前需先
+  `npm install && npm run build`；且 checkout 需位于 `$DSH_HOME/profiles/` 下
+  （或仓库自带 node_modules），否则 `@deepseek-ai/*` peer 依赖会报
+  `ERR_MODULE_NOT_FOUND`。
+
+## 🚀 快速开始 / Quick Start
+
+对话中委派（主代理会看到角色清单指引，自动选择工具与角色）：
+
+```text
+subagent_role({ role: "translator", prompt: "把 README.md 翻译成英文" })
+subagent_role({ role: "code-reviewer", model: "deepseek-chat", prompt: "..." })  # 临时覆盖模型
+```
+
+`role` 参数支持用角色 id 或显示名引用：未命中 id 时会按 `displayName` 精确匹配
+（多个同名角色取定义顺序第一个并提示）；建议始终用 id，见系统提示中的 Delegate 行。
+
+> **`subagent_role` 与内置 `subagent` 是两个不同的工具。** 本插件注册的是
+> `subagent_role`（工具名由 `toolName` 配置，默认 `subagent_role`）；DSH 基础
+> bundle 另有内置的 `subagent` / `subagent_fork`，两者在同一次请求的工具清单里
+> **并存**。只有走 `subagent_role` 才会应用角色绑定的 `agentPreset`（persona/工具由 preset 承载）；模型改用
+> 内置 `subagent` 时这两项不生效（模型选择由官方 dsh-tool-subagent 的
+> `modelSelectionSettings` 负责）。
+> 因此需要角色语义时，请在提示里明确要求调用 `subagent_role`。
+
+## 🖼️ 界面预览 / Screenshots
+
+以下截图来自本地一次性预览实例，示例数据仅用于演示：
+
+![设置页面](docs/assets/screenshots/settings-page.png)
+
+## ⚙️ 配置 / Configuration
 
 `dsh plugin add` 会通过插件包自带的 `cordis.patch.yml` 自动挂载主条目与桥接条目
 （`subagent-director` / `subagent-director-bridge`，桥接条目用于把设置命名空间
@@ -80,74 +106,45 @@ dsh plugin --profile <name> add dsh-plugin-subagent-director
 > 注意：不要再用 `- insert:` 添加这两个条目，否则启动会报
 > `duplicate loader entry id`。
 
-### 安装注意事项
-
-- 推荐直接 `dsh plugin --profile <name> add dsh-plugin-subagent-director`（npm
-  发布版已包含构建产物，peer 依赖由 DSH 的 `$DSH_HOME/profiles/node_modules`
-  fallback 提供，开箱即用）。
-- 本地 `link:` 开发时：git 仓库不包含 `lib/`（已被 .gitignore），挂载前需先
-  `npm install && npm run build`；且 checkout 需位于 `$DSH_HOME/profiles/` 下
-  （或仓库自带 node_modules），否则 `@deepseek-ai/*` peer 依赖会报
-  `ERR_MODULE_NOT_FOUND`。
-
-### 角色模板（设置界面或 settings.yaml）
+## 🎭 角色模板 / Role Templates
 
 settings 命名空间 `subagent-director`。角色可以不绑定 provider/model（继承全局
-默认模型），也可以按需绑定。推荐默认角色（含委派指引与 persona）：
+默认模型），也可以按需绑定。推荐默认角色（含委派指引与可选 Agent Preset；
+DSH 0.2.1 的 persona/toolFilter 由 Agent Preset 承载，下面示例假定已创建同名 preset）：
 
 ```yaml
 subagent-director:
-  defaultProvider: opencode-go
-  defaultModel: minimax-m2.7
-  defaultReasoningEffort: low
+  defaultProvider: anthropic
+  defaultModel: mythos-10
+  defaultReasoningEffort: max
   roles:
     code-reviewer:
       displayName: 代码审查员
       description: 审查代码质量、安全、可维护性与测试覆盖，输出结构化评审意见（问题清单 + 严重级别 + 修改建议），适合在提交/合并前独立复核改动
-      persona: 你是严谨的代码审查员。先给结论再给证据，区分阻塞项与建议项；逐条指出问题并给出可操作的修改建议，语气客观直接，不吹捧也不刻薄。
+      agentPreset: code-reviewer
     architect:
       displayName: 架构师
       description: 设计系统架构、模块边界与数据流，评估技术选型与演进路线，把模糊需求拆成可落地的设计方案
-      persona: 你是资深架构师。先澄清约束（规模、性能、团队、时间），再权衡取舍；输出带理由的决策，明确边界、扩展点与风险，避免过度设计。
+      agentPreset: architect
     test-engineer:
       displayName: 测试工程师
       description: 编写与评审测试用例，识别边界条件与异常路径，设计单元/集成测试策略
-      persona: 你是细致的测试工程师。以发现缺陷为目标，覆盖正常、边界与异常路径；每个用例说明验证什么、断言什么，报告按严重度排序。
+      agentPreset: test-engineer
     docs-writer:
       displayName: 文档工程师
       description: 撰写与润色技术文档、README、API 说明与变更日志，统一术语与结构
-      persona: 你是技术文档工程师。语言准确简洁、结构清晰、面向读者；不臆造内容，术语全文统一，示例可运行可验证。
+      agentPreset: docs-writer
     researcher:
       displayName: 研究分析员
       description: 检索资料、整理证据、做数据探索与可行性分析，输出带来源与不确定性的结论
-      persona: 你是严谨的研究分析员。优先一手来源，区分事实与推断；结论注明依据、时效与不确定性，不夸大不臆测。
+      agentPreset: researcher
     translator:
       displayName: 翻译员
       description: 中英互译技术文档、代码注释与沟通内容，保留术语准确性与语气
-      persona: 你是专业翻译。术语统一、句式自然、保留原文意图；专有名词与技术缩写保持原文，拿不准的术语标注出来。
+      agentPreset: translator
 ```
 
-### 使用
-
-对话中委派（主代理会看到角色清单指引，自动选择工具与角色）：
-
-```text
-subagent_role({ role: "translator", prompt: "把 README.md 翻译成英文" })
-subagent_role({ role: "code-reviewer", model: "deepseek-chat", prompt: "..." })  # 临时覆盖模型
-```
-
-`role` 参数支持用角色 id 或显示名引用：未命中 id 时会按 `displayName` 精确匹配
-（多个同名角色取定义顺序第一个并提示）；建议始终用 id，见系统提示中的 Delegate 行。
-
-> **`subagent_role` 与内置 `subagent` 是两个不同的工具。** 本插件注册的是
-> `subagent_role`（工具名由 `toolName` 配置，默认 `subagent_role`）；DSH 基础
-> bundle 另有内置的 `subagent` / `subagent_fork`，两者在同一次请求的工具清单里
-> **并存**。只有走 `subagent_role` 才会应用角色 persona 与 `toolFilter`；模型改用
-> 内置 `subagent` 时这两项不生效（模型选择由官方 dsh-tool-subagent 的
-> `modelSelectionSettings` 负责）。
-> 因此需要角色语义时，请在提示里明确要求调用 `subagent_role`。
-
-### 纯编排模式（`/orchestrate`）
+## 🎼 纯编排模式 / Orchestrate Mode
 
 ```text
 /orchestrate 分析上周A股走势   # 本轮开启并直接编排该任务（推荐用法）
@@ -169,23 +166,50 @@ orchestrate mode」等变体），该轮会话即自动进入纯编排模式—�
 `sessionProjections` 缺失时命令返回明确错误而不是假装成功，`commands` 缺失时
 命令不注册，插件其余功能不受影响。
 
-## 术语
+## 🧭 与官方子代理选择器的适配 / Official Subagent Selector Adaptation
+
+DSH alpha.4 起，官方内置 subagent 的模型选择收敛到 `subagent-model-selection` 设置段（`allowedModels` 授权列表）。本插件 v0.5.0 完全适配该机制：
+
+- **只从授权列表选择** —— `route-resolver` 把 provider/model 约束在官方
+  `subagent-model-selection.allowedModels` 内：显式传入未授权路由为**硬错误**；
+  插件默认层 / 角色绑定层的未授权路由被**丢弃并回退继承主代理**；
+- **不再双重写模型路由** —— 移除 rc 时代的 `applyDefaultRoute` 补丁缝，插件与
+  官方选择器不会各自覆盖同一条路由（设置面板可选的 provider/model 即官方
+  「插件-插件配置-Subagent池」里的选项）；
+- **客户端半同步移植** —— 移除 rc 时代对 `@deepseek-ai/dsh-client-runtime/client`
+  （`dsh-client-runtime` 包）的全部引用（alpha.4/alpha.5 宿主均不携带该包），dock 读数改读 alpha.4 会话
+  `request/header` 记录，配置页在 alpha.4/alpha.5 宿主均可正常加载。
+
+## 📖 术语 / Glossary
 
 - **subagentProvider（传输）**：`spawn` / `fork` / `acp`——子代理跑在哪条传输链路上；
 - **provider（LLM route）**：`deepseek-official`、pi-ai route——模型请求实际发给哪个供应商。
 
 两者是**两套命名空间**，配置时不要混淆。
 
-## 开发
+## 🧩 兼容性 / Compatibility
+
+DSH 0.2.1 起兼容门禁优先读取 `engines.dsh`。本插件声明 **`engines.dsh: ">=0.2.1-rc.1"`**，全部 `@deepseek-ai/dsh-*` peer 也收敛到 `>=0.2.1-rc.1`：
+
+| DSH 版本 | 状态 |
+| --- | --- |
+| 0.2.1-rc.1 | ✅ typecheck / 297 测试 / 构建 / 门禁 |
+| 0.2.1-rc.2 | ✅ 兼容门禁通过 |
+
+> 只列出**实际跑过**的版本；未实测的不列。
+
+v0.6.0-beta.2 支持 DSH **0.2.1-rc.1+**。0.6.0-beta.1 把子代理接缝统一到 `startActivation` / `drainChildren`，并按官方方向把 persona 与工具组合迁移到 **Agent Preset**（角色模板新增 `agentPreset` 字段）；0.6.0-beta.2 在此基础上按 DSH 官方设计语言重做了设置界面（主题令牌、字号阶梯、统一卡片 / 按钮 / 开关 / 焦点环，亮暗主题一致），功能与协议不变。**破坏性**：0.1.x / 0.2.0-rc.1 仍不兼容，旧宿主请继续使用 **0.5.6**。
+
+## 🛠️ 开发 / Develop
 
 ```bash
 npm install
-npm test          # vitest（253 用例）
+npm test          # vitest（297 用例）
 npm run typecheck
 npm run build     # host(tsc) + client(rolldown bundle)
 ```
 
-## FAQ
+## ❓ FAQ
 
 **为什么需要两个插件条目？**
 DSH 的 Web API 只向白名单内的 settings 命名空间开放读写。本插件通过自注册的 `/subagent-director` HTTP 路由桥接自己的命名空间，而该路由依赖的 webServer 服务只能经 cordis `inject` 获取，因此拆成独立的 `subagent-director-bridge` 条目（无 Web 的 headless 场景它会自动不激活，主条目不受影响）。
@@ -205,26 +229,8 @@ DSH 的 Web API 只向白名单内的 settings 命名空间开放读写。本插
 [issue #6](https://github.com/SeverusZh/dsh-plugin-subagent-director/issues/6)。
 
 **新供应商/API 会自动出现吗？**
-会。设置页订阅了供应商与设置变更事件，在 Models 页新增供应商/API key 后，下拉列表自动刷新，无需重启。
+会。配置页订阅了供应商与设置变更事件，在 Models 页新增供应商/API key 后，下拉列表自动刷新，无需重启。
 
-## License
+## 📄 许可证 / License
 
 [MIT](./LICENSE) © Subagent Director contributors
-
----
-
-## English
-
-**Subagent Director** is an out-of-tree DeepSeek Harness plugin that lets you choose an LLM provider and model for subagents, and plan main-agent/subagent responsibilities through role templates.
-
-- **Provider/model selection** — a configurable default route plus optional per-call `provider`/`model` arguments on the `subagent_role` tool;
-- **Role templates** — named roles carrying a description, a persona, and an optional model binding;
-- **Four-layer resolution** — call args > role binding > plugin default > inherit from the parent agent (zero intrusion when unconfigured);
-- **Settings UI** — manage defaults and role cards in the DSH settings panel;
-- **Continuable background** — durable subagent ids with send_message follow-ups;
-- **Release continuable children** — a model-facing `close_subagent(subagent_id)` tool plus a "Release subagent" button in the subagent session header, freeing resident children through the core `drainContinuableChildren` API;
-- **Observability** — the addressed subagent’s actual provider/model shown under the composer, read from the session’s `request/header` records (graceful degradation when no run is recorded yet).
-
-**Official subagent selector adaptation (v0.5.0+)** — since DSH alpha.4 the built-in subagent constrains model selection to the official `subagent-model-selection` allowlist (`allowedModels`). v0.5.0 aligns with it: routes are selected only from the allowlist (unauthorized explicit routes hard-fail; unauthorized default/role routes are dropped and fall back to inheritance), the rc-era `applyDefaultRoute` patch seam is removed (no double-writing of model routes with the official selector), and the client half no longer references the rc-era `dsh-client-runtime` package. **Compatibility**: v0.5.0 targets DSH **0.1.2-alpha.4+**, verified on the current runtime **0.1.2-rc.1**; for older DSH releases use npm version **0.4.0**.
-
-**Install** — `dsh plugin --profile <name> add dsh-plugin-subagent-director` mounts the main and bridge entries automatically from the package's bundle patch (`cordis.patch.yml`); optionally override the main entry's config in your profile's cordis.patch.yml (see the Chinese section above). License: MIT.

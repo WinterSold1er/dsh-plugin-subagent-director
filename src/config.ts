@@ -8,26 +8,27 @@
  * Two provider namespaces live side by side here and MUST NOT be confused
  * (design section 14, risk R2):
  *   - `subagentProvider`: the subagent TRANSPORT provider name handed to
- *     `ctx.subagents.start(...)` (e.g. `spawn`, `fork`, `acp`).
+ *     `ctx.subagents.startActivation({ provider, ... })` (e.g. `spawn`, `fork`, `acp`).
  *   - `agentOptions.provider` / `defaultProvider` (settings): the LLM route
  *     provider that actually serves model requests (e.g. `deepseek-official`,
  *     a pi-ai route). They are unrelated name spaces.
  */
 import z from '@deepseek-ai/schemastery';
 
+import { SettingsFields } from './settings.js';
 import { ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS } from './orchestrate-guard.js';
 import type { OrchestrateEnforcement } from './orchestrate-guard.js';
 
 /**
- * Cordis-layer plugin configuration.
+ * Cordis-layer plugin configuration (composition fields).
  *
  * All fields are optional so an empty composition entry degrades to the DSH
  * default behaviour (inherit the parent agent's model; one-shot foreground).
  */
 export interface DirectorConfig {
   /**
-   * The subagent TRANSPORT provider to start runs on. This is the `name`
-   * argument of `ctx.subagents.start(name, request)`, NOT an LLM route.
+   * The subagent TRANSPORT provider to start runs on. This is the `provider`
+   * field of the `ctx.subagents.startActivation(spec)` spec, NOT an LLM route.
    * Default 'spawn'.
    */
   subagentProvider?: string;
@@ -49,12 +50,15 @@ export interface DirectorConfig {
   enableRunInBackground?: boolean;
 
   /**
-   * Background execution policy (default 'one-shot').
-   * 'one-shot' defaults calls to foreground and runs background calls as a
-   * plain Task. 'continuable' defaults calls to background via
-   * ctx.subagents.startContinuable(), requires the transport provider's
-   * prepareContinuable capability, and returns the durable child id for later
-   * send_message follow-up (FR-5.3).
+   * Background execution policy (default 'one-shot'). On the 0.2.x
+   * startActivation seam both policies start a managed activation; the policy
+   * only sets the default of the tool's `run_in_background` argument.
+   * 'one-shot' defaults calls to foreground (delivery 'caller', the tool awaits
+   * the result); a background call (delivery 'parent') returns the durable
+   * child id and the runtime notifies the parent. 'continuable' defaults calls
+   * to background and requires the transport provider's prepareContinuable
+   * capability (validated at mount), so the child is a local session the parent
+   * can later steer with send_message (FR-5.3).
    */
   backgroundMode?: 'one-shot' | 'continuable';
 
@@ -63,40 +67,16 @@ export interface DirectorConfig {
    * provider's `depthLimit` capability. 'provider-managed' sends no cap.
    */
   maxDepth?: number | 'provider-managed';
-  /**
-   * Model-facing names of the read-only tools the orchestrator may still call
-   * while `/orchestrate on` is in effect (context gathering for dispatch
-   * decisions). Everything NOT in this list and not a dispatch/interaction
-   * tool is blocked for the main agent in that mode (fail-closed allow-list;
-   * see src/orchestrate-guard.ts for the full policy). Defaults to the DSH
-   * host read-only surface. Extend it for host builds or MCP servers that
-   * expose additional read-only tools; never list a tool that writes, edits,
-   * or executes.
-   */
+
+  /** Read-only tool allow-list used by the orchestrate tool guard (fail-closed). */
   orchestrateReadOnlyTools?: readonly string[];
 
-  /**
-   * Tool-level enforcement strictness for orchestrate mode (default 'strict').
-   * 'strict': while orchestrate is in effect — sticky (/orchestrate on until
-   * off) OR per-turn (使用orchestrate模式 / /orchestrate <task> this turn) —
-   * the main agent is held to the fail-closed allow-list above and every
-   * write/execute tool call is blocked (the injected prompt says ENFORCED at
-   * the tool level, which is then true). 'lenient': tool-level enforcement
-   * covers ONLY the sticky projection; per-turn orchestration stays
-   * prompt-only and the injected prompt says so honestly (no false ENFORCED
-   * claim). Choose lenient when per-turn orchestration must not risk blocking
-   * legitimate work; sticky mode is then the only hard boundary.
-   * 'none': no tool-level enforcement (prompt-only).
-   */
+  /** Mount-level default for orchestrate enforcement (strict-at-the-bottom). */
   orchestrateEnforcement?: OrchestrateEnforcement;
-  /** Master switch: whether to intercept tool calls in orchestrate mode. Default true. */
-  orchestrateInterceptTools?: boolean;
-  /** Cascade switch: whether per-turn orchestrate mode intercepts tool calls. Default true. */
-  orchestrateRoundIntercept?: boolean;
 }
 
-/** Schemastery schema for {@link DirectorConfig}. */
-export const Config = z.object({
+/** The composition-layer field map (restart-managed; not part of the settings form). */
+const CompositionFields = {
   subagentProvider: z.string().default('spawn'),
   toolName: z.string().default('subagent_role'),
   enableRunInBackground: z.boolean().default(true),
@@ -105,6 +85,17 @@ export const Config = z.object({
     .union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed')]),
   orchestrateReadOnlyTools: z.array(z.string()).default([...ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS]),
   orchestrateEnforcement: z.union(['strict', 'lenient', 'none']),
-  orchestrateInterceptTools: z.boolean(),
-  orchestrateRoundIntercept: z.boolean(),
+};
+
+/**
+ * Schemastery schema for the plugin Config — the authoritative schema on DSH
+ * 0.1.7. It carries both the composition fields (plain, restart-managed) and the
+ * settings fields (volatile, live-editable); only the volatile settings fields
+ * surface in the Host settings form (`volatileForm`), so the settings UI is
+ * unchanged. The entry id `subagent-director` is the ns `describe()`/`mutate()`
+ * address.
+ */
+export const Config = z.object({
+  ...CompositionFields,
+  ...SettingsFields,
 });

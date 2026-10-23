@@ -13,7 +13,7 @@
  * section) while staying robust to roles appearing at runtime.
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { SubagentDirectorSettings } from './settings.js';
+import { type SubagentDirectorSettings } from './settings.js';
 /** Prompt order: just after dsh-tool-subagent's 116.5 tool section. */
 export declare const GUIDANCE_SECTION_ORDER = 117;
 /** Stable, unique section name (configuration changes only affect new assemblies). */

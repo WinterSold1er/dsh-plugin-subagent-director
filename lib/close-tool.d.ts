@@ -3,7 +3,7 @@
  *
  * Model-facing counterpart of dsh-tool-subagent-control's send_message /
  * interrupt_agent: the calling agent (exec.agent) authorizes release of its
- * OWN direct continuable child through ctx.subagents.drainContinuableChildren,
+ * OWN direct continuable child through ctx.subagents.drainChildren,
  * which throws UNAUTHORIZED when the target is not a direct child of the
  * caller and treats absent/non-resident targets as a no-op. The tool is
  * registered unconditionally (like the control tools); on a deployment

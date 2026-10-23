@@ -14,11 +14,10 @@
  * webServer-dependent HTTP bridge lives in the separate
  * \`subagent-director-bridge\` entry (src/bridge-entry.ts).
  *
- * Background modes: 'one-shot' defaults calls to foreground and runs background
- * calls as a plain Task; 'continuable' defaults them to background via
- * ctx.subagents.startContinuable() and requires the transport provider's
- * prepareContinuable capability, which is validated at mount time (mirrors
- * dsh-tool-subagent).
+ * Background modes (0.2.x startActivation seam): 'one-shot' defaults calls to
+ * foreground (delivery 'caller'); 'continuable' defaults them to background
+ * (delivery 'parent') and requires the transport provider's prepareContinuable
+ * capability, which is validated at mount time (mirrors dsh-tool-subagent).
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { assertSubagentMaxDepth } from '@deepseek-ai/dsh-subagent';
@@ -28,8 +27,8 @@ import { createDelegationTool } from './delegation-tool.js';
 import { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
 import { applyGuidance } from './guidance.js';
 import { applyOrchestrate } from './orchestrate.js';
-import { createSettingsSnapshot, installDirectorSettings, resolveEnforcementLevel, resolveLayeredEnforcement } from './settings.js';
 import type { OrchestrateEnforcement } from './orchestrate-guard.js';
+import { readDirectorSettings, installDirectorSettingsPage, createSettingsWarner, type DirectorSettingsHandles, resolveLayeredEnforcement } from './settings.js';
 
 export { Config } from './config.js';
 export type { DirectorConfig } from './config.js';
@@ -55,40 +54,26 @@ export {
   renderOrchestratorRoles,
   renderOrchestratorUnavailableNotice,
   buildOrchestratorFrame,
-  buildAgentTeamFrame,
-  renderAgentTeamPrompt,
-  renderAgentTeamSection,
   detectOrchestrateRequest,
-  extractSessionEvents,
   ORCHESTRATE_SECTION_NAME,
   ORCHESTRATE_SECTION_ORDER,
   ORCHESTRATE_PROJECTION_KEY,
   ORCHESTRATE_EVENT_TYPE,
-  AGENT_TEAM_EVENT_TYPE,
   ORCHESTRATE_VALID_MODES,
-  resolveOrchestrateMode,
   type OrchestrateMode,
   type OrchestrateRequest,
 } from './orchestrate.js';
-export {
-  createOrchestrateToolGuard,
-  orchestrateAlwaysAllowedTools,
-  resolveMainAgentAllowedTools,
-  ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS,
-  ORCHESTRATE_SUBAGENT_CONTROL_TOOLS,
-  AGENT_TEAM_MANAGEMENT_TOOLS,
-  AGY_TO_DSH_MAP,
-  STRICT_MIRROR_RUN_CODE,
-  unwrapToolIntent,
-  type UnwrappedToolIntent,
-  type OrchestrateGuardDeps,
-} from './orchestrate-guard.js';
+export type { OrchestrateEnforcement } from './orchestrate-guard.js';
 export { CLOSE_SUBAGENT_TOOL_NAME, createCloseSubagentTool } from './close-tool.js';
 export {
   SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE,
   SettingsSchema,
   validateDirectorSettings,
-  installDirectorSettings,
+  installDirectorSettingsPage,
+  readDirectorSettings,
+  settingsWarnings,
+  danglingDefaultRoleWarning,
+  createSettingsWarner,
   type RoleTemplate,
   type SubagentDirectorSettings,
 } from './settings.js';
@@ -97,7 +82,7 @@ export const name = 'subagent-director';
 
 export const inject = ['tools', 'subagents', 'llm', 'settings'];
 
-export function apply(ctx: Context, config: import('./config.js').DirectorConfig) {
+export function apply(ctx: Context, config: import('./config.js').DirectorConfig & DirectorSettingsHandles) {
   const backgroundMode = config.backgroundMode ?? 'one-shot';
   const toolName = config.toolName ?? 'subagent_role';
   const providerName = config.subagentProvider ?? 'spawn';
@@ -108,23 +93,33 @@ export function apply(ctx: Context, config: import('./config.js').DirectorConfig
   // through ctx.get(). The main entry must not touch webServer, or headless
   // profiles would lose the delegation tool.
 
-  // ---- settings snapshot -------------------------------------------------
-  // 快照跟随 dsh-settings 的 onChange 热更新（settings.yaml / 设置面板改动
-  // 即时生效），不再只在挂载时读取一次。
-  const settingsSnapshot = createSettingsSnapshot<import('./settings.js').SubagentDirectorSettings>({});
-  installDirectorSettings(ctx, {}, settingsSnapshot.hooks);
-  const getSettings = settingsSnapshot.get;
+  // ---- settings (0.1.7: plugin Config schema, volatile = live) ------------
+  // 设置声明为插件 Config schema（src/config.ts 的 SettingsFields），读取用
+  // `config.<field>.get()`；写入经 configEditor 就地更新引用，插件无需重启即
+  // 生效（设置面板改动即时生效）。页面策略 auto:false = 使用插件自建 UI。
+  installDirectorSettingsPage(ctx);
+  // Single settings-read chokepoint for every consumer (guidance / orchestrate
+  // / resolver). Read-time warnings — currently a dangling defaultRole the
+  // 0.1.7 write path admits — are logged here, deduped by warning-set signature
+  // (persistent misconfiguration warns once, not on every read).
+  const warnSettings = createSettingsWarner((message) => ctx.logger.warn('[' + name + '] ' + message));
+  const getSettings = () => {
+    const warnings: string[] = [];
+    const settings = readDirectorSettings(config, warnings);
+    warnSettings(warnings);
+    return settings;
+  };
 
   // ---- role guidance ----------------------------------------------------
   applyGuidance(ctx, getSettings, toolName);
 
   // ---- orchestrate command + projection + prompt section + tool guard ----
   // Enforcement resolution (layered, strict-at-the-bottom):
-  //   1. user setting when the user toggled it in the settings UI;
+  //   1. user setting when toggled in the settings UI;
   //   2. else the plugin mount config (DirectorConfig.orchestrateEnforcement);
   //   3. else 'strict' (the documented fail-closed baseline).
-  // Both the prompt frame and the tool guard read this single resolved value
-  // so they always agree (no false ENFORCED claim).
+  // Prompt frame and tool guard read this single resolved value so they always
+  // agree (no false ENFORCED claim).
   const resolveEnforcement = (): OrchestrateEnforcement => {
     return resolveLayeredEnforcement(config, getSettings());
   };

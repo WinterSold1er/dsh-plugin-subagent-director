@@ -20,13 +20,14 @@ import {
   directorCatalogOk,
   pickDirectorNamespaceView,
   toDirectorNamespaceView,
+  readDirectorNamespaceView,
   directorMutate,
   dispatchSubagentClose,
   dispatchSubagentModel,
   dispatchSubagentTools,
   latestRequestHeaderModel,
 } from '../src/remote.js';
-import { SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE } from '../src/settings.js';
+import { SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE, SUBAGENT_MODEL_SELECTION_NAMESPACE } from '../src/settings.js';
 
 const NS = SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE;
 
@@ -34,6 +35,7 @@ const NS = SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE;
 function descriptor(overrides: Partial<SettingsDescriptor> = {}): SettingsDescriptor {
   return {
     ns: NS,
+    autoGenerate: true,
     schema: { type: 'dict' },
     value: { defaultProvider: 'deepseek-official' },
     revision: 3,
@@ -51,6 +53,7 @@ describe('toDirectorNamespaceView', () => {
       descriptor({ secrets: [{ path: ['apiKey'], set: true }], user: { apiKey: '__REDACTED__' } }),
     );
     expect(view).toEqual({
+      autoGenerate: true,
       ns: String(NS),
       schema: { type: 'dict' },
       value: { defaultProvider: 'deepseek-official' },
@@ -90,6 +93,36 @@ describe('pickDirectorNamespaceView', () => {
     expect(view).toBeDefined();
     expect(view!.ns).toBe(String(NS));
     expect(view!.revision).toBe(3);
+  });
+});
+
+describe('readDirectorNamespaceView read-time warnings', () => {
+  const settingsWith = (value: unknown) =>
+    ({ writable: true, describe: () => [descriptor({ value })] }) as never;
+
+  it('surfaces a dangling defaultRole as a warning on the view', () => {
+    const view = readDirectorNamespaceView(
+      settingsWith({ defaultRole: 'ghost', roles: { coder: { displayName: 'C', description: 'd' } } }),
+    );
+    expect(view.warnings).toBeDefined();
+    expect(view.warnings).toHaveLength(1);
+    expect(view.warnings![0]).toMatch(/defaultRole/);
+    expect(view.warnings![0]).toMatch(/ghost/);
+    // The view still carries the raw (unrewritten) stored value.
+    expect((view.view!.value as { defaultRole?: string }).defaultRole).toBe('ghost');
+  });
+
+  it('omits the warnings field for a sound configuration (no shape change)', () => {
+    const view = readDirectorNamespaceView(
+      settingsWith({ defaultRole: 'coder', roles: { coder: { displayName: 'C', description: 'd' } } }),
+    );
+    expect('warnings' in view).toBe(false);
+  });
+
+  it('omits the warnings field when the namespace is not registered', () => {
+    const view = readDirectorNamespaceView({ writable: true, describe: () => [] } as never);
+    expect(view.view).toBeUndefined();
+    expect('warnings' in view).toBe(false);
   });
 });
 
@@ -164,13 +197,19 @@ describe('directorMutate', () => {
 
 
 describe('directorCatalogOk', () => {
-  const settingsLike = (get: (ns: string) => unknown) => ({ get }) as never;
+  // 0.1.7: the section value is read from describe()'s descriptor for the entry
+  // id `subagent-model-selection-settings` (no settings.get(ns)).
+  const settingsLike = (descriptors: Array<{ ns: string; value?: unknown }>) =>
+    ({ describe: () => descriptors }) as never;
+  const selectionDescriptor = (value: unknown) => [
+    { ns: SUBAGENT_MODEL_SELECTION_NAMESPACE, value },
+  ];
 
   it('returns the authorized routes when the official selection is enabled with a non-empty list', () => {
-    const result = directorCatalogOk(settingsLike((ns) => {
-      expect(ns).toBe('subagent-model-selection');
-      return { enabled: true, allowedModels: [{ provider: 'deepseek-official', model: 'deepseek-v4-flash' }, { provider: 'pi-ai', model: 'gpt-5' }] };
-    }));
+    const result = directorCatalogOk(settingsLike(selectionDescriptor({
+      enabled: true,
+      allowedModels: [{ provider: 'deepseek-official', model: 'deepseek-v4-flash' }, { provider: 'pi-ai', model: 'gpt-5' }],
+    })));
     expect(result).toEqual({
       ok: true,
       value: {
@@ -184,19 +223,22 @@ describe('directorCatalogOk', () => {
   });
 
   it('returns an empty allowlist when the official selection is disabled', () => {
-    const result = directorCatalogOk(settingsLike(() => ({ enabled: false, allowedModels: [{ provider: 'x', model: 'y' }] })));
+    const result = directorCatalogOk(settingsLike(selectionDescriptor({ enabled: false, allowedModels: [{ provider: 'x', model: 'y' }] })));
     expect(result).toEqual({ ok: true, value: { modelSelectionEnabled: false, allowedRoutes: [] } });
   });
 
   it('returns an empty allowlist when the section is absent', () => {
-    const result = directorCatalogOk(settingsLike(() => {
-      throw new Error('settings namespace not registered');
-    }));
-    expect(result).toEqual({ ok: true, value: { modelSelectionEnabled: false, allowedRoutes: [] } });
+    const absent = directorCatalogOk(settingsLike([]));
+    expect(absent).toEqual({ ok: true, value: { modelSelectionEnabled: false, allowedRoutes: [] } });
+  });
+
+  it('returns an empty allowlist when describe() throws (inactive seam)', () => {
+    const throwing = { describe: () => { throw new Error('settings namespace not registered'); } } as never;
+    expect(directorCatalogOk(throwing)).toEqual({ ok: true, value: { modelSelectionEnabled: false, allowedRoutes: [] } });
   });
 
   it('drops malformed route entries and returns an empty allowlist without a settings service', () => {
-    const malformed = directorCatalogOk(settingsLike(() => ({
+    const malformed = directorCatalogOk(settingsLike(selectionDescriptor({
       enabled: true,
       allowedModels: [{ provider: '', model: 'y' }, { provider: 'ok', model: '' }, null, 'junk'],
     })));
@@ -419,7 +461,7 @@ describe('dispatchSubagentClose', () => {
   const closeDeps = (overrides: Partial<import('../src/remote.js').BridgeDeps> = {}) => ({
     settings: { writable: true, describe: () => [], mutate: async () => {} } as never,
     agents: { get: () => ({ id: 'parent-1' }) },
-    subagents: { drainContinuableChildren: async () => {} },
+    subagents: { drainChildren: async () => {} },
     ...overrides,
   });
 
@@ -427,7 +469,7 @@ describe('dispatchSubagentClose', () => {
     const calls: unknown[][] = [];
     const deps = closeDeps({
       subagents: {
-        drainContinuableChildren: async (...args: unknown[]) => {
+        drainChildren: async (...args: unknown[]) => {
           calls.push(args);
         },
       },
@@ -454,7 +496,7 @@ describe('dispatchSubagentClose', () => {
   it('rejects with internal when the drain rejects (e.g. non-direct child)', async () => {
     const deps = closeDeps({
       subagents: {
-        drainContinuableChildren: async () => {
+        drainChildren: async () => {
           throw new Error('subagent "other" is not a direct child of agent "parent-1"');
         },
       },

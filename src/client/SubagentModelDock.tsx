@@ -72,23 +72,6 @@ type QueryState =
   | { status: 'missing' }
   | { status: 'failed' };
 
-/** Inline styling using the shared token surface (no CSS pipeline; M2 deviation). */
-const style: { [key: string]: React.CSSProperties } = {
-  root: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '3px 16px',
-    fontSize: 12,
-    lineHeight: '16px',
-    color: 'var(--dsw-alias-label-tertiary)',
-  },
-  ref: {
-    color: 'var(--dsw-alias-label-secondary)',
-    fontFamily: 'var(--dsw-font-family-mono, monospace)',
-  },
-};
-
 /** Render the provider/model readout for an addressed subagent, or nothing. */
 export function SubagentModelDock({
   useSession,
@@ -161,16 +144,16 @@ export function SubagentModelDock({
 
   if (!lookup.found) {
     return (
-      <div style={style.root} role="status">
+      <div className="sd-dock" role="status">
         {query.status === 'failed' ? t('modelQueryFailed') : t('modelNotRecorded')}
       </div>
     );
   }
   const ref: SubagentModelRef = lookup;
   return (
-    <div style={style.root} role="status">
+    <div className="sd-dock" role="status">
       <span>{t('modelRanOn')}</span>
-      <span style={style.ref} title={t('modelRanOnTitle', { model: formatModelRef(ref) })}>
+      <span className="sd-dock-ref" title={t('modelRanOnTitle', { model: formatModelRef(ref) })}>
         {formatModelRef(ref)}
       </span>
     </div>

@@ -15,12 +15,13 @@ export type { SubagentOptionsSectionInjected, SubagentOptionsSectionProps } from
 export type { SubagentOptionsState, SubagentOptionsStore } from './store.js';
 /** Refetch the page snapshot only after its first load. */
 export declare function refreshIfLoaded(controller: SubagentOptionsStore): void;
-/** Services required by the settings registration (cordis fiber inject). */
+/** Services required by the slot registrations (cordis fiber inject). */
 export declare const inject: string[];
 /**
- * Register the Subagent Director section once the `settings.section`
- * declaration is on the ledger, wire its store to the connection, and keep it
- * fresh on every pushed invalidation (settings or provider topology).
+ * Register the Subagent Director configuration once the
+ * `plugins.bundle.config` declaration is on the ledger, wire its store to the
+ * connection, and keep it fresh on every pushed invalidation (settings or
+ * provider topology).
  */
 export declare function apply(ctx: ClientContext): void;
 //# sourceMappingURL=index.d.ts.map

@@ -13,7 +13,7 @@
  * connection/reset) refresh the page.
  */
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client';
-import type { SettingsNamespaceView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types';
 import { type DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';

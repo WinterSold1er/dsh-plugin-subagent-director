@@ -1,9 +1,12 @@
 /**
  * Subagent Director — browser half (DSH client plugin).
  *
- * Registers the `settings.section` page that lets a user pick the default LLM
- * provider/model for subagents and manage role templates (each binds a persona
- * and optional provider/model to a delegation). Data flows through the
+ * Registers the bundle configuration entry (`plugins.bundle.config`, keyed by
+ * the npm package name) that lets a user pick the default LLM provider/model
+ * for subagents and manage role templates (each binds a persona and optional
+ * provider/model to a delegation). It renders on this plugin's own page in the
+ * DSH plugin manager (插件列表 → dsh-plugin-subagent-director) — the DSH
+ * settings panel is no longer used for configuration. Data flows through the
  * connection's wire API into a snapshot store; writes travel as path ops
  * through settings.mutate with an optimistic-revision lock.
  *
@@ -13,7 +16,7 @@
  * readout reads the current session's chat-view snapshot through the
  * uiConversation binding (see SubagentModelDock).
  */
-import { useSyncExternalStore } from 'react';
+import { createElement, useSyncExternalStore } from 'react';
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client';
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
@@ -28,7 +31,6 @@ import type {} from '@deepseek-ai/dsh-client-locale/client';
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-api-remotes/client';
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client';
-import { IconBranchOutline16 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { bindSnapshotSelector } from './bind.js';
 import { en, zh, type SubagentDirectorKey } from './locales.js';
 import { SubagentOptionsStore, type SubagentOptionsState } from './store.js';
@@ -36,6 +38,21 @@ import type { SubagentOptionsSectionInjected } from './SubagentOptionsSection.js
 import { SubagentOptionsSection } from './SubagentOptionsSection.js';
 import { SubagentModelDock, type SubagentModelDockInjected } from './SubagentModelDock.js';
 import { SubagentCloseAction, type SubagentCloseActionInjected } from './SubagentCloseAction.js';
+import { ensureUiStyles } from './ui.js';
+
+/** Minimal branch glyph used as the settings-navigation icon. */
+function SubagentDirectorNavIcon(): JSX.Element {
+  return createElement(
+    'svg',
+    { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true },
+    createElement('path', {
+      d: 'M5 3v7a2 2 0 0 0 2 2h4M5 6h4a2 2 0 0 0 2-2V3',
+      stroke: 'currentColor',
+      strokeWidth: 1.3,
+      strokeLinecap: 'round',
+    }),
+  );
+}
 
 /** Dictionary namespace owned by Subagent Director (bilingual, typed). */
 export const NS = 'settings.subagentDirector';
@@ -58,15 +75,19 @@ export function refreshIfLoaded(controller: SubagentOptionsStore): void {
   void controller.load();
 }
 
-/** Services required by the settings registration (cordis fiber inject). */
+/** Services required by the slot registrations (cordis fiber inject). */
 export const inject = ['slots', 'locale', 'connection', 'remote'];
 
 /**
- * Register the Subagent Director section once the `settings.section`
- * declaration is on the ledger, wire its store to the connection, and keep it
- * fresh on every pushed invalidation (settings or provider topology).
+ * Register the Subagent Director configuration once the
+ * `plugins.bundle.config` declaration is on the ledger, wire its store to the
+ * connection, and keep it fresh on every pushed invalidation (settings or
+ * provider topology).
  */
 export function apply(ctx: ClientContext): void {
+  // Additive design-system stylesheet for every client surface this plugin
+  // contributes (plugin-page section, composer dock, session-header action).
+  ensureUiStyles();
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'subagent-director: copy dictionaries');
 
   // ctx.get('connection') is typed as the host HostConnectionHandle when the
@@ -132,6 +153,10 @@ export function apply(ctx: ClientContext): void {
     };
   }, 'subagent-director: pushed invalidations');
 
+  // Settings-page seat (still present on DSH 0.2.1-rc.2: ui-agent-preset registers
+  // `settings.section` at packages/client/ui-agent-preset/src/client/index.ts:266).
+  // Kept alongside `plugins.bundle.config` so role templates / SubagentModelDock
+  // stay reachable from both the settings page and the plugin manager page.
   ctx.slots.inject('settings.section', () =>
     ctx.slots.register(
       {
@@ -139,8 +164,29 @@ export function apply(ctx: ClientContext): void {
         id: 'subagent-director',
         order: 20,
         label: (): string => t('nav'),
-        // Forward icon to host settings navigation while avoiding type collision with npm-published dsh-client-ui-settings
-        ...({ icon: IconBranchOutline16 } as Record<string, unknown>),
+        // Local branch glyph for host settings navigation (inline to keep the
+        // client half free of a runtime dependency on ui-primitives).
+        ...({ icon: SubagentDirectorNavIcon } as Record<string, unknown>),
+        locale: NS,
+        inject: injected,
+      },
+      SubagentOptionsSection,
+    ),
+  );
+
+  // Configuration lives on THIS plugin's page in the DSH plugin manager
+  // (插件列表 → dsh-plugin-subagent-director), between the package description
+  // and the component rows. `plugins.bundle.config` is keyed by the npm package
+  // name, and the page renders the section only while that exact key is
+  // registered (`configured = ledger.bundles.has(pkg.name)` in
+  // dsh-client-ui-plugin-manager); the slot has no native fallback form. A
+  // bundle page may hold several configuration entries, so the page passes NO
+  // host `form` — the store keeps owning its own bridge and draft lifecycle.
+  ctx.slots.inject('plugins.bundle.config', () =>
+    ctx.slots.register(
+      {
+        name: 'plugins.bundle.config',
+        key: 'dsh-plugin-subagent-director',
         locale: NS,
         inject: injected,
       },

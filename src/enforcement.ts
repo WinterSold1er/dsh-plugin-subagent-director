@@ -27,12 +27,23 @@ export interface EnforcementConfigInput {
  *  5. Fall back to legacy orchestrateEnforcement if present ('strict' | 'lenient' | 'none').
  *  6. Baseline when unconfigured (including orchestrateInterceptTools: true alone) is 'strict'.
  */
+/** Volatile settings handles expose `.get()`; plain values pass through. */
+function unwrap<T>(value: T | { get(): T } | undefined): T | undefined {
+  if (value !== null && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function') {
+    return (value as { get(): T }).get();
+  }
+  return value as T | undefined;
+}
+
 export function resolveEnforcementLevel(config?: EnforcementConfigInput | null): OrchestrateEnforcement {
   if (!config) return 'strict';
-  if (config.orchestrateInterceptTools === false) return 'none';
-  if (config.orchestrateRoundIntercept === false) return 'lenient';
-  if (config.orchestrateRoundIntercept === true) return 'strict';
-  if (config.orchestrateEnforcement !== undefined) return config.orchestrateEnforcement;
+  const interceptTools = unwrap(config.orchestrateInterceptTools);
+  const roundIntercept = unwrap(config.orchestrateRoundIntercept);
+  const legacy = unwrap(config.orchestrateEnforcement);
+  if (interceptTools === false) return 'none';
+  if (roundIntercept === false) return 'lenient';
+  if (roundIntercept === true) return 'strict';
+  if (legacy !== undefined) return legacy;
   return 'strict';
 }
 
@@ -48,9 +59,9 @@ export function resolveLayeredEnforcement(
 ): OrchestrateEnforcement {
   if (
     userSettings &&
-    (userSettings.orchestrateInterceptTools !== undefined ||
-      userSettings.orchestrateRoundIntercept !== undefined ||
-      userSettings.orchestrateEnforcement !== undefined)
+    (unwrap(userSettings.orchestrateInterceptTools) !== undefined ||
+      unwrap(userSettings.orchestrateRoundIntercept) !== undefined ||
+      unwrap(userSettings.orchestrateEnforcement) !== undefined)
   ) {
     return resolveEnforcementLevel(userSettings);
   }

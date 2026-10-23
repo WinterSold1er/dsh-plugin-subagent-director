@@ -12,18 +12,21 @@
  *                       model?, reasoningEffort?, toolFilter? } }
  *   }
  */
-import type { SettingsPathOpView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import type { SettingsPathOpView } from '@deepseek-ai/dsh-settings/types';
 import type { OrchestrateEnforcement } from '../orchestrate-guard.js';
 export type { OrchestrateEnforcement } from '../orchestrate-guard.js';
 /** One role as the user edits it in a card (empty string = "clear the field"). */
 export interface RoleDraft {
     displayName: string;
     description: string;
+    /** Independent DSH Agent Preset id (0.2.1 owns persona/tool composition there). */
+    agentPreset?: string;
+    /** @deprecated Legacy field, preserved but not edited. */
     persona?: string;
     provider?: string;
     model?: string;
     reasoningEffort?: string;
-    /** Tool scoping: the allow list the editor manages (deny is preserved, not edited). */
+    /** @deprecated Legacy field, preserved but not edited. */
     toolFilter?: {
         allow?: string[];
         deny?: string[];
@@ -33,6 +36,7 @@ export interface RoleDraft {
 export interface StoredRole {
     displayName: string;
     description: string;
+    agentPreset?: string;
     persona?: string;
     provider?: string;
     model?: string;

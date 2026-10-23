@@ -4,11 +4,14 @@
  * A compact row that expands into: a search box, select-all / deselect-all
  * (scoped to the CURRENT filter — tools hidden by the search are never
  * touched), a live "selected / total" count, and a checkbox grid of the
- * filtered tools. Collapsed, it shows the label, the count, and a
- * chevron toggle so a large catalog (hundreds of MCP tools) stays compact.
+ * filtered tools. Collapsed, it shows the label, the count, and a chevron
+ * toggle so a large catalog (hundreds of MCP tools) stays compact.
+ *
+ * Styling uses the shared `sd-*` classes from ui.ts so the picker matches the
+ * rest of the settings section in both themes.
  */
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { SubagentDirectorKey } from './locales.js';
 import {
   addToolNames,
@@ -16,7 +19,6 @@ import {
   removeToolNames,
   toggleToolName,
 } from './toolset-logic.js';
-import { fieldLabelStyle, ghostButtonStyle, textInputStyle, token } from './ui.js';
 
 export interface ToolSetPickerProps {
   /** All model-visible tool names (the catalog). */
@@ -31,123 +33,55 @@ export interface ToolSetPickerProps {
   isDefault?: boolean;
 }
 
-const style: { [key: string]: React.CSSProperties } = {
-  root: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  head: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  count: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '1px 6px',
-    borderRadius: 4,
-    background: token.bgLayer1,
-    border: '1px solid ' + token.border,
-    color: token.labelTertiary,
-    fontSize: 11,
-    lineHeight: '14px',
-  },
-  search: {
-    ...textInputStyle,
-    height: 28,
-    fontSize: 12,
-    borderRadius: 6,
-  },
-  actionsRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionBtn: {
-    ...ghostButtonStyle,
-    height: 24,
-    fontSize: 11,
-    padding: '0 8px',
-    borderRadius: 6,
-  },
-  grid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    maxHeight: 240,
-    overflowY: 'auto',
-    border: '1px solid ' + token.border,
-    borderRadius: 8,
-    padding: '6px 8px',
-    background: token.bgLayer1,
-  },
-  item: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    fontSize: 12,
-    color: token.labelSecondary,
-    cursor: 'pointer',
-    padding: '3px 6px',
-    borderRadius: 5,
-    userSelect: 'none',
-  },
-  hint: {
-    color: token.labelTertiary,
-    fontSize: 11,
-    lineHeight: '16px',
-  },
-  toggle: {
-    ...ghostButtonStyle,
-    height: 24,
-    fontSize: 11,
-    padding: '0 8px',
-    borderRadius: 6,
-    marginLeft: 'auto',
-  },
-};
-
 /** Render the searchable, select-all capable tool-set picker. */
 export function ToolSetPicker({ tools, selected, onChange, t, isDefault = false }: ToolSetPickerProps): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(true);
+  // Stable id for the expandable region so the toggle can advertise its target.
+  const panelId = useId();
 
   const filtered = useMemo(() => filterToolNames(tools, query), [tools, query]);
+  const filteredSet = useMemo(() => new Set(filtered), [filtered]);
   const allFilteredSelected = filtered.length > 0 && filtered.every((name) => selected.includes(name));
 
   if (tools.length === 0) {
     return (
-      <div style={style.root}>
-        <label style={fieldLabelStyle}>{t('toolFilter')}</label>
-        <span style={style.hint}>{t('toolFilterEmpty')}</span>
+      <div className="sd-toolset">
+        <label className="sd-label">{t('toolFilter')}</label>
+        <span className="sd-note">{t('toolFilterEmpty')}</span>
       </div>
     );
   }
 
   return (
-    <div style={style.root}>
-      <div style={style.head}>
-        <label style={fieldLabelStyle}>{t('toolFilter')}</label>
-        <span style={style.count}>
+    <div className="sd-toolset">
+      <div className="sd-toolset-head">
+        <label className="sd-label">{t('toolFilter')}</label>
+        <span className="sd-toolset-count">
           {t('toolFilterCount', { count: selected.length, total: tools.length })}
         </span>
-        <button type="button" style={style.toggle} onClick={() => setOpen((o) => !o)}>
+        <button
+          type="button"
+          className="sd-btn sd-btn-ghost sd-btn-sm"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          onClick={() => setOpen((o) => !o)}
+        >
           {open ? t('toolFilterCollapse') : t('toolFilterExpand')}
         </button>
       </div>
       {open ? (
-        <>
+        <div className="sd-toolset-body" id={panelId}>
           <input
-            style={style.search}
+            className="sd-input sd-search"
             value={query}
             placeholder={t('toolFilterSearch')}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <div style={style.actionsRow}>
+          <div className="sd-actions">
             <button
               type="button"
-              style={style.actionBtn}
+              className="sd-btn sd-btn-ghost sd-btn-sm"
               disabled={filtered.length === 0 || allFilteredSelected}
               onClick={() => onChange(addToolNames(selected, filtered))}
             >
@@ -155,7 +89,7 @@ export function ToolSetPicker({ tools, selected, onChange, t, isDefault = false 
             </button>
             <button
               type="button"
-              style={style.actionBtn}
+              className="sd-btn sd-btn-ghost sd-btn-sm"
               disabled={filtered.length === 0 || !filtered.some((name) => selected.includes(name))}
               onClick={() => onChange(removeToolNames(selected, filtered))}
             >
@@ -163,24 +97,24 @@ export function ToolSetPicker({ tools, selected, onChange, t, isDefault = false 
             </button>
           </div>
           {filtered.length === 0 ? (
-            <span style={style.hint}>{t('toolFilterNoMatch')}</span>
+            <span className="sd-note">{t('toolFilterNoMatch')}</span>
           ) : (
-            <div style={style.grid}>
+            <div className="sd-toolset-grid">
               {filtered.map((name) => (
-                <label key={name} style={style.item}>
+                <label key={name} className="sd-tool">
                   <input
                     type="checkbox"
                     checked={selected.includes(name)}
                     onChange={() => onChange(toggleToolName(selected, name))}
                   />
-                  <span>{name}</span>
+                  <span className="sd-tool-name">{name}</span>
                 </label>
               ))}
             </div>
           )}
-        </>
+        </div>
       ) : null}
-      <span style={style.hint}>
+      <span className="sd-note">
         {isDefault
           ? (selected.length === 0 ? t('mainAgentToolFilterNone') : t('mainAgentToolFilterHint'))
           : (selected.length === 0 ? t('toolFilterNone') : t('toolFilterHint'))}

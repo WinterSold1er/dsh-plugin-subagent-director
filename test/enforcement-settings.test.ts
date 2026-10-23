@@ -19,6 +19,14 @@ import { createOrchestrateToolGuard, ORCHESTRATE_DEFAULT_READ_ONLY_TOOLS, type O
 import { enforcementOps, interceptSwitchesOps, type StoredSection } from '../src/client/store-logic.js';
 import type { OrchestrateEnforcement } from '../src/orchestrate-guard.js';
 
+/** 0.2.1-rc.2 settings schemas return volatile handles; unwrap for assertions. */
+function raw<T>(value: T | { get(): T } | undefined): T | undefined {
+  if (value !== null && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function') {
+    return (value as { get(): T }).get();
+  }
+  return value as T | undefined;
+}
+
 function makeExec(name: string, perTurn?: 'on'): ToolExecution {
   const events = perTurn === 'on'
     ? [
@@ -41,12 +49,12 @@ function fakeProjections(on: boolean) {
 describe('SettingsSchema — orchestrateEnforcement field', () => {
   it('absent field resolves to undefined (no default, falls through to strict)', () => {
     const resolved = SettingsSchema({});
-    expect(resolved.orchestrateEnforcement).toBeUndefined();
+    expect(raw(resolved.orchestrateEnforcement)).toBeUndefined();
   });
 
   it('accepts "strict" and "lenient"', () => {
-    expect(SettingsSchema({ orchestrateEnforcement: 'strict' }).orchestrateEnforcement).toBe('strict');
-    expect(SettingsSchema({ orchestrateEnforcement: 'lenient' }).orchestrateEnforcement).toBe('lenient');
+    expect(raw(SettingsSchema({ orchestrateEnforcement: 'strict' }).orchestrateEnforcement)).toBe('strict');
+    expect(raw(SettingsSchema({ orchestrateEnforcement: 'lenient' }).orchestrateEnforcement)).toBe('lenient');
   });
 
   it('rejects a non-union value at resolve time', () => {
@@ -58,12 +66,12 @@ describe('index mount & Config schema — YAML switches pass-through and resolut
 
   it('Config schema does not auto-fill orchestrateEnforcement, preserving raw YAML switches', () => {
     const parsedEmpty = Config({});
-    expect(parsedEmpty.orchestrateEnforcement).toBeUndefined();
+    expect(raw(parsedEmpty.orchestrateEnforcement)).toBeUndefined();
     expect(resolveEnforcementLevel(parsedEmpty)).toBe('strict');
 
     const parsedSwitchOff = Config({ orchestrateInterceptTools: false });
-    expect(parsedSwitchOff.orchestrateEnforcement).toBeUndefined();
-    expect(parsedSwitchOff.orchestrateInterceptTools).toBe(false);
+    expect(raw(parsedSwitchOff.orchestrateEnforcement)).toBeUndefined();
+    expect(raw(parsedSwitchOff.orchestrateInterceptTools)).toBe(false);
     expect(resolveEnforcementLevel(parsedSwitchOff)).toBe('none');
   });
 
@@ -228,8 +236,8 @@ describe('resolveEnforcementLevel and deriveSwitchesFromEnforcement', () => {
 
   it('resolveEnforcementLevel handles SettingsSchema parsed output correctly', () => {
     const fromEmpty = SettingsSchema({});
-    expect(fromEmpty.orchestrateInterceptTools).toBeUndefined();
-    expect(fromEmpty.orchestrateRoundIntercept).toBeUndefined();
+    expect(raw(fromEmpty.orchestrateInterceptTools)).toBeUndefined();
+    expect(raw(fromEmpty.orchestrateRoundIntercept)).toBeUndefined();
     expect(resolveEnforcementLevel(fromEmpty)).toBe('strict');
 
     const fromExplicitLenient = SettingsSchema({ orchestrateInterceptTools: true, orchestrateRoundIntercept: false });
@@ -434,16 +442,16 @@ describe('store-logic — interceptSwitchesOps', () => {
 describe('DirectorConfig & YAML switches penetration', () => {
   it('Config schema leaves optional switches unset, and resolveEnforcementLevel defaults to strict baseline', () => {
     const parsed = Config({});
-    expect(parsed.orchestrateEnforcement).toBeUndefined();
-    expect(parsed.orchestrateInterceptTools).toBeUndefined();
-    expect(parsed.orchestrateRoundIntercept).toBeUndefined();
+    expect(raw(parsed.orchestrateEnforcement)).toBeUndefined();
+    expect(raw(parsed.orchestrateInterceptTools)).toBeUndefined();
+    expect(raw(parsed.orchestrateRoundIntercept)).toBeUndefined();
     expect(resolveEnforcementLevel(parsed)).toBe('strict');
   });
 
   it('orchestrateInterceptTools: false in YAML penetrates without being masked by auto-fill', () => {
     const parsed = Config({ orchestrateInterceptTools: false });
-    expect(parsed.orchestrateEnforcement).toBeUndefined();
-    expect(parsed.orchestrateInterceptTools).toBe(false);
+    expect(raw(parsed.orchestrateEnforcement)).toBeUndefined();
+    expect(raw(parsed.orchestrateInterceptTools)).toBe(false);
     expect(resolveEnforcementLevel(parsed)).toBe('none');
   });
 

@@ -1,8 +1,10 @@
 /** One role template card: read-only summary plus an inline editor.
  * Provider/model picks are limited to the routes authorized in the official
  * Subagent model-selection list; reasoning effort is a free-text field (the
- * alpha.4 client has no effort catalog). Writes go through the controller as
- * path ops, and failures return a localized message. */
+ * alpha.4 client has no effort catalog). DSH 0.2.1 moved persona/tool
+ * composition into an independent Agent Preset, so the card exposes an
+ * `agentPreset` id instead. Writes go through the controller as path ops, and
+ * failures return a localized message. */
 import { useState } from 'react';
 import type { DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
@@ -70,6 +72,7 @@ export function RoleCard({
   const [draft, setDraft] = useState<RoleDraft>({
     displayName: role.displayName,
     description: role.description,
+    agentPreset: role.agentPreset ?? '',
     persona: role.persona ?? '',
     provider: role.provider ?? '',
     model: role.model ?? '',
@@ -182,7 +185,8 @@ export function RoleCard({
       {role.description ? (
         <p style={{ margin: 0, color: token.labelSecondary, fontSize: 13, lineHeight: '19px' }}>{role.description}</p>
       ) : null}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="sd-meta">
+        <Metadata label={t('agentPreset')} value={role.agentPreset} />
         <Metadata label={t('provider')} value={role.provider} />
         <Metadata label={t('model')} value={role.model} />
         <Metadata label={t('reasoningEffort')} value={role.reasoningEffort} />

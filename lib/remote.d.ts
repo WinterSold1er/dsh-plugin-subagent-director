@@ -31,11 +31,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import { SessionId } from '@deepseek-ai/dsh-session';
-import { SettingsConflictError, type SettingsDescriptor, type SettingsProvider } from '@deepseek-ai/dsh-settings';
-import type { RpcResult, RpcError, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import { SettingsConflictError, type SettingsDescriptor, type SettingsForms } from '@deepseek-ai/dsh-settings';
+import type { SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-settings/types';
 import { SettingsSchema } from './settings.js';
 import { SUBAGENT_DIRECTOR_RPC_VIEW, SUBAGENT_DIRECTOR_RPC_MUTATE, SUBAGENT_DIRECTOR_RPC_CLOSE, SUBAGENT_DIRECTOR_RPC_MODEL, SUBAGENT_DIRECTOR_RPC_TOOLS, type DirectorCatalogSuccess, type DirectorCloseRequest, type DirectorModelRequest, type DirectorModelSuccess, type DirectorMutateRequest, type DirectorToolsSuccess, type DirectorViewSuccess } from './bridge-contract.js';
-import { SUBAGENT_DIRECTOR_ROUTE_PATH } from './envelope.js';
+import { SUBAGENT_DIRECTOR_ROUTE_PATH, type RpcResult, type RpcError } from './envelope.js';
 /** Wire route path the bridge owns on the Host web server. */
 export { SUBAGENT_DIRECTOR_ROUTE_PATH as SUBAGENT_DIRECTOR_RPC_CHANNEL };
 /** Endpoint that returns the namespace's redacted wire view. */
@@ -56,14 +56,14 @@ export type { DirectorMutateRequest, DirectorViewSuccess, DirectorCloseRequest, 
  * them lazily through ctx.get and may leave optional ones undefined.
  */
 export interface BridgeDeps {
-    settings: SettingsProvider;
+    settings: SettingsForms;
     /** Live agent registry (dsh-agent ctx.agents). */
     agents?: {
         get(id: SessionId): unknown;
     };
     /** Subagent service (dsh-subagent ctx.subagents). */
     subagents?: {
-        drainContinuableChildren(parent: unknown, childIds: readonly SessionId[]): Promise<void>;
+        drainChildren(parent: unknown, childIds: readonly SessionId[]): Promise<void>;
     };
     /** Unified session query (dsh-session-query ctx.sessionQuery). */
     sessionQuery?: {
@@ -90,9 +90,9 @@ export declare function latestRequestHeaderModel(events: readonly unknown[]): {
     model: string;
 } | undefined;
 /**
- * Map one redacted settings descriptor to its wire view — mirrors apiproxy's
- * `namespaceView` (dsh-host-apiproxy/lib/index.js:2385-2399) exactly, so the
- * client store sees the same `SettingsNamespaceView` shape it already renders.
+ * Map one redacted settings descriptor to its wire view. The shape is the
+ * 0.1.7 configuration-form view (`SettingsNamespaceView` from
+ * dsh-settings/types), the same one the client store renders.
  */
 export declare function toDirectorNamespaceView(descriptor: SettingsDescriptor): SettingsNamespaceView;
 /**
@@ -103,8 +103,14 @@ export declare function pickDirectorNamespaceView(descriptors: readonly Settings
 /**
  * Read the current redacted namespace view straight from the settings seam.
  * Exported for reuse by tests and by the bridge handler.
+ *
+ * Read-time hardening: the live namespace value is checked with the same
+ * `settingsWarnings` the plugin's own read path uses, so a dangling
+ * `defaultRole` (admitted by the 0.1.7 write gate) is visible in the settings
+ * view, not only in the plugin logs. Absent warnings omit the field entirely
+ * to keep the sound-configuration response shape unchanged.
  */
-export declare function readDirectorNamespaceView(settings: SettingsProvider): DirectorViewSuccess;
+export declare function readDirectorNamespaceView(settings: SettingsForms): DirectorViewSuccess;
 /** Build the `settings-rejected` RPC error for one seam failure. */
 export declare function directorRejected(ns: string, error: unknown): RpcError;
 /** Build the `settings-conflict` RPC error, mirroring apiproxy's mapping. */
@@ -114,16 +120,21 @@ export declare function directorConflict(conflict: SettingsConflictError): RpcEr
  * Mirrors the apiproxy `settings.describe` value minus `hasDocument` (the
  * bridge does not own the document affordance; the client ignores it).
  */
-export declare function directorViewOk(settings: SettingsProvider): RpcResult<DirectorViewSuccess>;
+export declare function directorViewOk(settings: SettingsForms): RpcResult<DirectorViewSuccess>;
 /**
  * Build the ok payload for the settingsCatalog endpoint: the official Subagent
- * model-selection allowlist (the `subagent-model-selection` section the user
- * edits in the official "Subagent" settings card). The page may select a
- * provider/model ONLY from this list. An absent/disabled/empty section yields
- * an empty list — the client then shows the "no authorized models" notice and
- * the host-side resolver applies no constraint (inherits the parent model).
+ * model-selection allowlist (the settings section the user edits in the official
+ * "Subagent" settings card). The page may select a provider/model ONLY from this
+ * list. An absent/disabled/empty section yields an empty list — the client then
+ * shows the "no authorized models" notice and the host-side resolver applies no
+ * constraint (inherits the parent model).
+ *
+ * On 0.1.7 the section's live value is read from the settings seam's
+ * `describe()` under the entry id `subagent-model-selection-settings` (there is
+ * no `settings.get(ns)`); readNamespaceValue guards an inactive/unreadable
+ * section as "no allowlist".
  */
-export declare function directorCatalogOk(settings: SettingsProvider | undefined): RpcResult<DirectorCatalogSuccess>;
+export declare function directorCatalogOk(settings: SettingsForms | undefined): RpcResult<DirectorCatalogSuccess>;
 /**
  * Execute one path-op mutation against the settings seam and map the outcome
  * to an RpcResult carrying the new redacted view (or a `settings-conflict` /
@@ -132,7 +143,7 @@ export declare function directorCatalogOk(settings: SettingsProvider | undefined
  * format and throws TypeError for malformed ones, which this maps to
  * `settings-rejected`).
  */
-export declare function directorMutate(mutate: SettingsProvider['mutate'], describe: SettingsProvider['describe'], ns: string, ops: readonly SettingsPathOpView[], expectedRevision: number | undefined): Promise<RpcResult<SettingsNamespaceView>>;
+export declare function directorMutate(mutate: SettingsForms['mutate'], describe: SettingsForms['describe'], ns: string, ops: readonly SettingsPathOpView[], expectedRevision: number | undefined): Promise<RpcResult<SettingsNamespaceView>>;
 /** Re-export the wire-envelope helpers so tests import them from one place. */
 export { parseClientRequestEnvelope, isLoopbackHost, isLoopbackHostname, endpointFromPath, buildServerResponse, buildMethodMismatchResponse, buildBadRequestResponse, INVALID_REQUEST_RPC_ID, } from './envelope.js';
 /**

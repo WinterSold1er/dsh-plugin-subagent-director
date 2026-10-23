@@ -34,20 +34,17 @@ import { SessionId } from '@deepseek-ai/dsh-session';
 import {
   SettingsConflictError,
   type SettingsDescriptor,
-  type SettingsNamespace,
-  type SettingsProvider,
+  type SettingsForms,
 } from '@deepseek-ai/dsh-settings';
-import type {
-  RpcResult,
-  RpcError,
-  RpcErrorDetailsMap,
-  SettingsNamespaceView,
-  SettingsPathOpView,
-} from '@deepseek-ai/dsh-host-apiproxy/api';
+import type { SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-settings/types';
 
 import {
   SettingsSchema,
   SUBAGENT_DIRECTOR_SETTINGS_NAMESPACE,
+  SUBAGENT_MODEL_SELECTION_NAMESPACE,
+  readNamespaceValue,
+  settingsWarnings,
+  type SubagentDirectorSettings,
 } from './settings.js';
 import {
   SUBAGENT_DIRECTOR_RPC_VIEW,
@@ -73,6 +70,8 @@ import {
   isLoopbackHost,
   endpointFromPath,
   type ServerResponseEnvelope,
+  type RpcResult,
+  type RpcError,
 } from './envelope.js';
 
 /** Wire route path the bridge owns on the Host web server. */
@@ -96,11 +95,11 @@ export type { DirectorMutateRequest, DirectorViewSuccess, DirectorCloseRequest, 
  * them lazily through ctx.get and may leave optional ones undefined.
  */
 export interface BridgeDeps {
-  settings: SettingsProvider;
+  settings: SettingsForms;
   /** Live agent registry (dsh-agent ctx.agents). */
   agents?: { get(id: SessionId): unknown };
   /** Subagent service (dsh-subagent ctx.subagents). */
-  subagents?: { drainContinuableChildren(parent: unknown, childIds: readonly SessionId[]): Promise<void> };
+  subagents?: { drainChildren(parent: unknown, childIds: readonly SessionId[]): Promise<void> };
   /** Unified session query (dsh-session-query ctx.sessionQuery). */
   sessionQuery?: { readSession(sessionId: SessionId): Promise<{ events: readonly unknown[] }> };
   /** Tool registry (dsh-tools ctx.tools), for the role tool-set catalog. */
@@ -135,17 +134,24 @@ export function latestRequestHeaderModel(events: readonly unknown[]): { provider
 }
 
 /**
- * Map one redacted settings descriptor to its wire view — mirrors apiproxy's
- * `namespaceView` (dsh-host-apiproxy/lib/index.js:2385-2399) exactly, so the
- * client store sees the same `SettingsNamespaceView` shape it already renders.
+ * Map one redacted settings descriptor to its wire view. The shape is the
+ * 0.1.7 configuration-form view (`SettingsNamespaceView` from
+ * dsh-settings/types), the same one the client store renders.
  */
 export function toDirectorNamespaceView(descriptor: SettingsDescriptor): SettingsNamespaceView {
+  // The descriptor types its JSON layers as `unknown`; the 0.1.7 wire view
+  // (dsh-settings/types) types them as JsonValue, so cast at this boundary.
   return {
+    autoGenerate: descriptor.autoGenerate,
     ns: String(descriptor.ns),
-    schema: descriptor.schema,
-    value: descriptor.value,
-    ...(descriptor.base === undefined ? {} : { base: descriptor.base }),
-    ...(descriptor.user === undefined ? {} : { user: descriptor.user }),
+    schema: descriptor.schema as SettingsNamespaceView['schema'],
+    value: descriptor.value as SettingsNamespaceView['value'],
+    ...(descriptor.base === undefined
+      ? {}
+      : { base: descriptor.base as SettingsNamespaceView['base'] }),
+    ...(descriptor.user === undefined
+      ? {}
+      : { user: descriptor.user as SettingsNamespaceView['user'] }),
     applies: descriptor.applies,
     secrets: (descriptor.secrets ?? []).map((secret) => ({
       path: [...secret.path],
@@ -173,12 +179,22 @@ export function pickDirectorNamespaceView(
 /**
  * Read the current redacted namespace view straight from the settings seam.
  * Exported for reuse by tests and by the bridge handler.
+ *
+ * Read-time hardening: the live namespace value is checked with the same
+ * `settingsWarnings` the plugin's own read path uses, so a dangling
+ * `defaultRole` (admitted by the 0.1.7 write gate) is visible in the settings
+ * view, not only in the plugin logs. Absent warnings omit the field entirely
+ * to keep the sound-configuration response shape unchanged.
  */
-export function readDirectorNamespaceView(settings: SettingsProvider): DirectorViewSuccess {
+export function readDirectorNamespaceView(settings: SettingsForms): DirectorViewSuccess {
   const descriptors = settings.describe({ redactSecrets: true });
+  const view = pickDirectorNamespaceView(descriptors);
+  const warnings =
+    view === undefined ? [] : settingsWarnings((view.value ?? {}) as SubagentDirectorSettings);
   return {
     writable: settings.writable,
-    view: pickDirectorNamespaceView(descriptors),
+    view,
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
@@ -212,46 +228,45 @@ export function directorConflict(conflict: SettingsConflictError): RpcError {
  * Mirrors the apiproxy `settings.describe` value minus `hasDocument` (the
  * bridge does not own the document affordance; the client ignores it).
  */
-export function directorViewOk(settings: SettingsProvider): RpcResult<DirectorViewSuccess> {
+export function directorViewOk(settings: SettingsForms): RpcResult<DirectorViewSuccess> {
   return { ok: true, value: readDirectorNamespaceView(settings) };
 }
 
 /**
  * Build the ok payload for the settingsCatalog endpoint: the official Subagent
- * model-selection allowlist (the `subagent-model-selection` section the user
- * edits in the official "Subagent" settings card). The page may select a
- * provider/model ONLY from this list. An absent/disabled/empty section yields
- * an empty list — the client then shows the "no authorized models" notice and
- * the host-side resolver applies no constraint (inherits the parent model).
+ * model-selection allowlist (the settings section the user edits in the official
+ * "Subagent" settings card). The page may select a provider/model ONLY from this
+ * list. An absent/disabled/empty section yields an empty list — the client then
+ * shows the "no authorized models" notice and the host-side resolver applies no
+ * constraint (inherits the parent model).
+ *
+ * On 0.1.7 the section's live value is read from the settings seam's
+ * `describe()` under the entry id `subagent-model-selection-settings` (there is
+ * no `settings.get(ns)`); readNamespaceValue guards an inactive/unreadable
+ * section as "no allowlist".
  */
 export function directorCatalogOk(
-  settings: SettingsProvider | undefined,
+  settings: SettingsForms | undefined,
 ): RpcResult<DirectorCatalogSuccess> {
-  if (settings === undefined) {
+  const selection = readNamespaceValue(settings, SUBAGENT_MODEL_SELECTION_NAMESPACE);
+  if (selection === null || typeof selection !== 'object') {
     return { ok: true, value: { modelSelectionEnabled: false, allowedRoutes: [] } };
   }
-  try {
-    const section = settings.get('subagent-model-selection') as
-      | { enabled?: unknown; allowedModels?: unknown }
-      | undefined;
-    const enabled = section !== null && typeof section === 'object' && section.enabled === true;
-    const raw = enabled && Array.isArray(section?.allowedModels) ? section.allowedModels : [];
-    const allowedRoutes = raw
-      .filter(
-        (entry): entry is { provider: string; model: string } =>
-          entry !== null &&
-          typeof entry === 'object' &&
-          typeof entry.provider === 'string' &&
-          entry.provider.length > 0 &&
-          typeof entry.model === 'string' &&
-          entry.model.length > 0,
-      )
-      .map(({ provider, model }) => ({ provider, model }));
-    return { ok: true, value: { modelSelectionEnabled: enabled, allowedRoutes } };
-  } catch {
-    // Unregistered namespace / malformed section: treat as "no allowlist".
-    return { ok: true, value: { modelSelectionEnabled: false, allowedRoutes: [] } };
-  }
+  const section = selection as { enabled?: unknown; allowedModels?: unknown };
+  const enabled = section.enabled === true;
+  const raw = enabled && Array.isArray(section.allowedModels) ? section.allowedModels : [];
+  const allowedRoutes = raw
+    .filter(
+      (entry): entry is { provider: string; model: string } =>
+        entry !== null &&
+        typeof entry === 'object' &&
+        typeof entry.provider === 'string' &&
+        entry.provider.length > 0 &&
+        typeof entry.model === 'string' &&
+        entry.model.length > 0,
+    )
+    .map(({ provider, model }) => ({ provider, model }));
+  return { ok: true, value: { modelSelectionEnabled: enabled, allowedRoutes } };
 }
 
 /**
@@ -263,8 +278,8 @@ export function directorCatalogOk(
  * `settings-rejected`).
  */
 export async function directorMutate(
-  mutate: SettingsProvider['mutate'],
-  describe: SettingsProvider['describe'],
+  mutate: SettingsForms['mutate'],
+  describe: SettingsForms['describe'],
   ns: string,
   ops: readonly SettingsPathOpView[],
   expectedRevision: number | undefined,
@@ -490,12 +505,7 @@ export async function dispatchSubagentClose(
       error: {
         code: 'session-not-found',
         message: 'parent agent ' + request.parentSessionId + ' is not live; its continuable children are released with it',
-        // dsh-host-apiproxy (0.1.1-rc.2) carries its own nested dsh-session
-        // copy, so its SessionId brand differs from the root alpha.4 one; the
-        // value itself is a plain id string, cast at the boundary.
-        details: {
-          sessionId: SessionId(request.parentSessionId) as unknown as RpcErrorDetailsMap['session-not-found']['sessionId'],
-        },
+        details: { sessionId: SessionId(request.parentSessionId) },
       },
     };
   }
@@ -506,7 +516,7 @@ export async function dispatchSubagentClose(
     };
   }
   try {
-    await deps.subagents.drainContinuableChildren(parent, [SessionId(request.childSessionId)]);
+    await deps.subagents.drainChildren(parent, [SessionId(request.childSessionId)]);
   } catch (error) {
     return {
       ok: false,
@@ -569,7 +579,7 @@ export async function dispatchSubagentModel(
  * service and installs nothing. Returns a disposer.
  */
 export function installDirectorRemoteBridge(ctx: Context): () => void {
-  const settings = ctx.get('settings') as SettingsProvider | undefined;
+  const settings = ctx.get('settings') as SettingsForms | undefined;
   const webServer = ctx.get('webServer');
   if (settings === undefined || webServer === undefined) {
     ctx.logger.debug(

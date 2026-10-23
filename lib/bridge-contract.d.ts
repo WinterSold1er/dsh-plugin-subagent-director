@@ -10,7 +10,7 @@
  * connection.rpc.call(channel, endpoint, payload) and the Host handler answers
  * with the existing RpcResult shape.
  */
-import type { SettingsNamespaceView } from '@deepseek-ai/dsh-host-apiproxy/api';
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types';
 /** Absolute RPC channel the bridge owns on the Host web server. */
 export declare const SUBAGENT_DIRECTOR_RPC_CHANNEL = "/subagent-director";
 /** Endpoint that returns the namespace's redacted wire view. */
@@ -48,6 +48,13 @@ export interface DirectorViewSuccess {
     writable: boolean;
     /** The redacted namespace wire view, absent when the namespace is not registered. */
     view: SettingsNamespaceView | undefined;
+    /**
+     * Read-time settings warnings for the current namespace value (e.g. a
+     * `defaultRole` referencing no defined role — a cross-field constraint the
+     * schemastery write gate cannot express). Omitted when there are none, so a
+     * sound configuration yields the exact pre-existing response shape.
+     */
+    warnings?: string[];
 }
 /** Request payload for the settingsMutate bridge endpoint. */
 export interface DirectorMutateRequest {

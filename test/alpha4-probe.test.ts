@@ -1,99 +1,92 @@
 /**
- * Real-cordis alpha.4 probes for the host-half redesign (double-write removal
+ * Real-cordis probes for the host-half redesign (double-write removal
  * + authorized-model constraint). Unlike the hand-rolled fakes in other unit
  * tests, these boot a GENUINE cordis Context and mount the real entry:
  *
  *   a) seam removal: applying the plugin registers `subagent_role` on the
- *      real `tools` seam while leaving the ORIGINAL `ctx.subagents.start`
+ *      real `tools` seam while leaving the ORIGINAL `ctx.subagents.startActivation`
  *      function untouched — the former default-route seam must never wrap it
  *      again (double-write avoidance with the official dsh-tool-subagent);
- *   b) settings: the `subagent-director` namespace registers through the
- *      alpha.4 `installSection` pattern, and delegation resolution consults
- *      the official `subagent-model-selection` section through `settings.get`;
+ *   b) settings (0.1.7): the plugin's Config schema resolves the settings fields
+ *      as volatile handles, the instance page policy registers with auto:false,
+ *      and delegation resolution consults the official model-selection section
+ *      through `settings.describe()`'s descriptor for
+ *      `subagent-model-selection-settings`;
  *   c) delegation execute: an unlisted explicit provider/model rejects with a
  *      'subagent-director:' hard error; a listed pair (plus an explicit
- *      reasoningEffort) flows through to `subagents.start` agentOptions; an
+ *      reasoningEffort) flows through to `subagents.startActivation` agentOptions; an
  *      unlisted plugin default is dropped (inherit); a disabled official
  *      selection leaves plugin behavior unconstrained.
  */
 import { describe, it, expect } from 'vitest';
 import { Context } from '@deepseek-ai/cordis';
-import { name as pluginName, inject as pluginInject, apply } from '../src/index.js';
+import { name as pluginName, inject as pluginInject, apply, Config } from '../src/index.js';
 
 /** Let cordis fiber loads / reactivations settle (they resolve in microtasks). */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
-/** Fake foreground run the fake subagents provider resolves. */
-function fakeRun() {
+/** Fake foreground activation the fake subagents service resolves. */
+function fakeActivation() {
   return {
-    id: 'run-1',
+    childId: 'run-1',
     result: Promise.resolve({ stopReason: 'completed' as const, output: [] }),
     dispose: async () => {},
   };
 }
 
-/** Minimal alpha.4-shaped settings provider stub (installSection/register/get). */
+/**
+ * Minimal 0.1.7-shaped settings stub: the plugin's own settings come from its
+ * Config schema (passed to ctx.plugin), so the seam only needs `configure`
+ * (page policy) and `describe` (reads the official model-selection value).
+ */
 function settingsStub(options: {
-  directorSettings?: Record<string, unknown>;
   selection?:
     | { enabled: boolean; allowedModels: Array<{ provider: string; model: string }> }
     | undefined;
 } = {}) {
-  const store = new Map<string, unknown>();
-  store.set('subagent-director', options.directorSettings ?? {});
-  if (options.selection !== undefined) store.set('subagent-model-selection', options.selection);
-  const registered: string[] = [];
-  const consulted: string[] = [];
-  const scope = (ns: string) => ({
-    get: () => store.get(ns),
-    watch: () => () => {},
-    update: async () => {},
-    replace: async () => {},
-  });
+  const configured: Array<{ auto?: boolean }> = [];
+  const describeCalls: string[][] = [];
+  const descriptors: Array<{ ns: string; value?: unknown }> = [];
+  if (options.selection !== undefined) {
+    descriptors.push({ ns: 'subagent-model-selection-settings', value: options.selection });
+  }
   return {
-    store,
-    registered,
-    consulted,
+    configured,
+    describeCalls,
     writable: true,
-    register(ns: string, _schema: unknown, _opts: unknown) {
-      registered.push(ns);
-      return scope(ns);
+    configure(presentation: { auto?: boolean }) {
+      configured.push(presentation);
+      return () => {};
     },
-    installSection(_owner: unknown, ns: string, _schema: unknown, entry: unknown, hooks: { setSource: (fn: () => unknown) => void; onChange: () => void }) {
-      registered.push(ns);
-      if (!store.has(ns)) store.set(ns, entry);
-      hooks.setSource(() => store.get(ns));
-      hooks.onChange();
+    describe(_options?: { redactSecrets?: boolean }) {
+      describeCalls.push(descriptors.map((d) => d.ns));
+      return descriptors;
     },
-    get(ns: string) {
-      consulted.push(ns);
-      return store.get(ns);
-    },
-    describe: () => [],
     mutate: async () => {},
-    update: async () => {},
-    replace: async () => {},
   };
 }
 
-/** Fake subagents service whose start records calls and keeps a marker. */
+/** Fake subagents service whose startActivation records calls and keeps a marker. */
 function subagentsStub() {
-  const calls: Array<{ name: string; request: Record<string, unknown> }> = [];
-  const provider = { name: 'spawn', capabilities: { persona: true, toolFilter: true, depthLimit: true } };
-  const start = Object.assign(
-    async (name: string, request: Record<string, unknown>) => {
-      calls.push({ name, request });
-      return fakeRun();
+  const calls: Array<{ provider: string; request: Record<string, unknown>; delivery: string }> = [];
+  const provider = {
+    name: 'spawn',
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: false, depthLimit: true },
+    inheritsParentContext: false,
+  };
+  const startActivation = Object.assign(
+    async (spec: { provider: string; request: Record<string, unknown>; delivery: string }) => {
+      calls.push({ provider: spec.provider, request: spec.request, delivery: spec.delivery });
+      return fakeActivation();
     },
-    { seamMarker: 'original-start' },
+    { seamMarker: 'original-startActivation' },
   );
   return {
     calls,
     provider,
-    start,
-    startContinuable: async () => ({ childId: 'child-1' }),
+    startActivation,
     getProvider: () => provider,
-    drainContinuableChildren: async () => {},
+    drainChildren: async () => {},
   };
 }
 
@@ -110,12 +103,18 @@ function captureTools() {
 }
 
 /** Mount the plugin entry on a real Context with the stub services. */
-function loadPlugin(ctx: Context, settings: ReturnType<typeof settingsStub>, tools: ReturnType<typeof captureTools>, subagents: ReturnType<typeof subagentsStub>): void {
+function loadPlugin(
+  ctx: Context,
+  settings: ReturnType<typeof settingsStub>,
+  tools: ReturnType<typeof captureTools>,
+  subagents: ReturnType<typeof subagentsStub>,
+  config: Record<string, unknown> = {},
+): void {
   ctx.provide('tools', { register: tools.register });
   ctx.provide('subagents', subagents);
   ctx.provide('llm', { listProviders: () => [{ id: 'cli' }, { id: 'rogue' }] });
   ctx.provide('settings', settings);
-  void ctx.plugin({ name: pluginName, inject: pluginInject, apply }, {});
+  void ctx.plugin({ name: pluginName, inject: pluginInject, apply, Config }, config);
 }
 
 /** The bare ToolRunContext-shaped execution object for direct execute calls. */
@@ -139,14 +138,14 @@ describe('real cordis probe — seam removal (no default-route double write)', (
     expect(tools.defs.map((d) => d.name)).toContain('close_subagent');
     // The plugin must never have replaced/wrapped the service method: identity
     // and the marker survive apply().
-    const live = ctx.get('subagents') as { start: typeof subagents.start };
-    expect(live.start).toBe(subagents.start);
-    expect((live.start as unknown as { seamMarker: string }).seamMarker).toBe('original-start');
+    const live = ctx.get('subagents') as { startActivation: typeof subagents.startActivation };
+    expect(live.startActivation).toBe(subagents.startActivation);
+    expect((live.startActivation as unknown as { seamMarker: string }).seamMarker).toBe('original-startActivation');
   });
 });
 
-describe('real cordis probe — settings registration + selection consultation', () => {
-  it('registers the subagent-director namespace via installSection and consults subagent-model-selection', async () => {
+describe('real cordis probe — settings page policy + selection consultation', () => {
+  it('registers the auto:false page policy and consults subagent-model-selection-settings', async () => {
     const ctx = new Context();
     const tools = captureTools();
     const settings = settingsStub({
@@ -156,17 +155,19 @@ describe('real cordis probe — settings registration + selection consultation',
     loadPlugin(ctx, settings, tools, subagents);
     await settle();
 
-    expect(settings.registered).toContain('subagent-director');
+    // The plugin ships its own Web settings page → auto:false page policy.
+    expect(settings.configured).toHaveLength(1);
+    expect(settings.configured[0].auto).toBe(false);
 
     // Drive one bare delegation: the execute path must read the official
-    // selection section through settings.get('subagent-model-selection').
+    // selection section through settings.describe().
     const tool = tools.defs.find((d) => d.name === 'subagent_role');
     expect(tool).toBeDefined();
     await tool!.execute!(
       { description: 'probe', prompt: 'no route fields' },
       execContext(),
     );
-    expect(settings.consulted).toContain('subagent-model-selection');
+    expect(settings.describeCalls.flat()).toContain('subagent-model-selection-settings');
   });
 });
 
@@ -202,7 +203,7 @@ describe('real cordis probe — delegation constraints wired to the authorized l
       execContext(),
     );
     expect(subagents.calls).toHaveLength(1);
-    expect(subagents.calls[0].name).toBe('spawn');
+    expect(subagents.calls[0].provider).toBe('spawn');
     expect(subagents.calls[0].request.agentOptions).toEqual({
       provider: 'cli',
       model: 'claude',
@@ -214,12 +215,9 @@ describe('real cordis probe — delegation constraints wired to the authorized l
   it('drops an unlisted plugin default (inherit) under an enabled official list', async () => {
     const ctx = new Context();
     const tools = captureTools();
-    const settings = settingsStub({
-      selection: SELECTION,
-      directorSettings: { defaultProvider: 'rogue', defaultModel: 'x' },
-    });
+    const settings = settingsStub({ selection: SELECTION });
     const subagents = subagentsStub();
-    loadPlugin(ctx, settings, tools, subagents);
+    loadPlugin(ctx, settings, tools, subagents, { defaultProvider: 'rogue', defaultModel: 'x' });
     await settle();
 
     const tool = tools.defs.find((d) => d.name === 'subagent_role')!;
@@ -233,15 +231,41 @@ describe('real cordis probe — delegation constraints wired to the authorized l
     const tools = captureTools();
     const settings = settingsStub({
       selection: { enabled: false, allowedModels: [{ provider: 'cli', model: 'claude' }] },
-      directorSettings: { defaultProvider: 'rogue', defaultModel: 'x' },
     });
     const subagents = subagentsStub();
-    loadPlugin(ctx, settings, tools, subagents);
+    loadPlugin(ctx, settings, tools, subagents, { defaultProvider: 'rogue', defaultModel: 'x' });
     await settle();
 
     const tool = tools.defs.find((d) => d.name === 'subagent_role')!;
     await tool.execute!({ description: 'x', prompt: 'y' }, execContext());
     expect(subagents.calls).toHaveLength(1);
     expect(subagents.calls[0].request.agentOptions).toEqual({ provider: 'rogue', model: 'x' });
+  });
+
+  it('forwards a role agentPreset and never the removed persona/toolFilter', async () => {
+    const ctx = new Context();
+    const tools = captureTools();
+    const settings = settingsStub();
+    const subagents = subagentsStub();
+    loadPlugin(ctx, settings, tools, subagents, {
+      roles: {
+        reviewer: {
+          displayName: 'Reviewer',
+          description: 'Review changes',
+          agentPreset: 'reviewer-preset',
+          // Legacy fields still present in a pre-0.2.1 settings document.
+          persona: 'You are a reviewer.',
+          toolFilter: { allow: ['apply_patch'], deny: [] },
+        },
+      },
+    });
+    await settle();
+
+    const tool = tools.defs.find((d) => d.name === 'subagent_role')!;
+    await tool.execute!({ description: 'x', prompt: 'y', role: 'reviewer' }, execContext());
+    expect(subagents.calls).toHaveLength(1);
+    expect(subagents.calls[0].request.agentPreset).toBe('reviewer-preset');
+    expect(subagents.calls[0].request.persona).toBeUndefined();
+    expect(subagents.calls[0].request.toolFilter).toBeUndefined();
   });
 });

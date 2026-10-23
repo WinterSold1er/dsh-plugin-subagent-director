@@ -7,9 +7,13 @@
  * State lives in the page store (SubagentOptionsStore); writes travel as
  * path ops through settings.mutate with an optimistic-revision lock.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+// Type-only: pulls in the Plugins page's slot contract so the
+// `plugins.bundle.config` cell (and its `view`/`form` owner props) merge into
+// the client `SlotMap` via module augmentation. The package is never imported at
+// runtime — the slot outlet owns rendering; this import exists purely for types.
+import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-manager/client';
 import type { SnapshotSelectorHook } from './bind.js';
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { DirectorAllowedRoute } from '../bridge-contract.js';
 import { modelsForProvider, providerNames } from './allowed-routes.js';
 import type { SubagentDirectorKey } from './locales.js';
@@ -41,10 +45,7 @@ export interface SubagentOptionsSectionInjected {
 }
 
 /** Props delivered by the slot outlet: the inject face spread flat. */
-export type SubagentOptionsSectionProps = Partial<SubagentOptionsSectionInjected> & {
-  /** Framework global kit: current-session selector (for the tool catalog). */
-  useSessions?: SnapshotSelectorHook<SessionListState>;
-};
+export type SubagentOptionsSectionProps = Partial<SubagentOptionsSectionInjected> & Partial<PluginConfigViewProps>;
 
 /** Local draft of the default-model row. */
 interface DefaultRowDraft {
@@ -54,41 +55,34 @@ interface DefaultRowDraft {
 }
 
 /**
- * Render the Subagent Director settings section content column.
+ * Render the Subagent Director configuration content column.
  * @param props - slot-delivered injected dependencies.
  * @returns the section, or null while the shell has not injected yet.
  */
 export function SubagentOptionsSection(props: SubagentOptionsSectionProps): JSX.Element | null {
-  const { controller, useSnapshot, t, useSessions } = props;
+  const { controller, useSnapshot, t } = props;
   if (controller === undefined || useSnapshot === undefined || t === undefined) return null;
-  return <Loaded injected={{ controller, useSnapshot, t, useSessions }} />;
+  // `summary` is reserved for official cards and row fallbacks; only `page` renders here.
+  if (props.view === 'summary') return null;
+  return <Loaded injected={{ controller, useSnapshot, t }} />;
 }
 
 interface LoadedInjected {
   controller: SubagentOptionsStore;
   useSnapshot: SnapshotSelectorHook<SubagentOptionsState>;
   t: (key: SubagentDirectorKey) => string;
-  useSessions?: SnapshotSelectorHook<SessionListState>;
 }
 
 function Loaded({ injected }: { injected: LoadedInjected }): JSX.Element | null {
   const { controller, t } = injected;
   const state = injected.useSnapshot((s) => s);
-  const sessionId = injected.useSessions !== undefined ? injected.useSessions((s) => s.current) : undefined;
-  const lastSessionRef = useRef<string | undefined>(undefined);
 
+  // 0.2.1-rc.2 `SessionListState` no longer exposes `current`, so the catalog is
+  // loaded without a session id (the Host enumerates its global tool registry).
   useEffect(() => {
-    if (state.status === 'idle' && !state.loading) void controller.load(sessionId);
+    if (state.status === 'idle' && !state.loading) void controller.load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status, state.loading, sessionId]);
-
-  useEffect(() => {
-    if (state.status === 'ready' && sessionId !== lastSessionRef.current) {
-      lastSessionRef.current = sessionId;
-      void controller.load(sessionId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, state.status]);
+  }, [state.status, state.loading]);
 
   if (state.status === 'error') {
     return (

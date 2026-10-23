@@ -122,6 +122,17 @@ export function RoleFormFields({
         />
       </div>
       <div style={rowStyle}>
+        <label style={fieldLabelStyle}>{t('agentPreset')}</label>
+        <input
+          style={textInputStyle}
+          value={draft.agentPreset ?? ''}
+          placeholder={t('agentPresetPlaceholder')}
+          disabled={disabled}
+          onChange={(e) => setField('agentPreset', e.target.value)}
+        />
+        <div style={{ color: token.labelTertiary, fontSize: 11 }}>{t('agentPresetHint')}</div>
+      </div>
+      <div style={rowStyle}>
         <label style={fieldLabelStyle}>{t('rolePersona')}</label>
         <textarea
           style={textAreaStyle}

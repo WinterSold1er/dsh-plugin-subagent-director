@@ -2,7 +2,206 @@
 
 本项目的所有显著变更都会记录在此文件中。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [0.5.0] - 2026-09-04
+## 0.6.0-beta.2 - 2026-10-19
+
+### 新增
+
+- **设置界面视觉重做**：按 DSH 官方设计语言重做插件详情页配置区、composer 下方的模型只读行与会话头部的释放按钮。统一使用官方主题令牌（表面 / 文本 / 边框 / 状态色 / 焦点环），字号收敛到 11 / 12 / 13 / 14 阶梯，间距与圆角对齐 8pt 体系；亮色与暗色主题一致，层级靠字号、字重、颜色与间距表达。
+- **统一组件样式**：默认模型卡、角色模板卡片、内联编辑表单、工具集选择器、主 / 次 / 危险按钮、输入框、状态 chip 与内联错误提示共用一套样式；补齐 `:focus-visible` 焦点环与克制的 hover / disabled 过渡，移除硬编码颜色。
+- **可维护性**：新增一份随插件卸载清理的样式表，交互态由真实 CSS 规则表达，组件统一引用主题令牌与 class。
+
+### 文档
+
+- README / README.en.md 同步 0.6.0-beta.2 与界面说明；全部 Markdown 标题去除括号并精简。
+
+## 0.6.0-beta.1 - 2026-10-17
+
+### 兼容性：适配 DSH 0.2.1-rc.1 / rc.2
+
+- **子代理接缝迁移**：DSH 0.2.1 将 `ctx.subagents.start()` /
+  `startContinuable()` 合并为统一的 `ctx.subagents.startActivation(spec)`，
+  并把 `drainContinuableChildren()` 更名为 `drainChildren()`。前台委派改用
+  `delivery: 'caller'`（等待 `activation.result` 并按 stop-reason 报错），
+  后台委派改用 `delivery: 'parent'`（立即返回持久化 child id，由运行时投递结果）；
+  不再依赖 `dsh-jobs` / `dsh-tool-jobs`。本改动基于 @shudingbo 的 PR #12，
+  并在最新 rc 上完成复核、修复与测试。
+- **persona/toolFilter 迁移到 Agent Preset**：0.2.1-rc.1 从
+  `SubagentStartRequest` / `SubagentCapabilities` 移除了 `persona` 与
+  `toolFilter`（官方 `dsh-tool-subagent` 也会对这两个配置项硬报错），角色
+  persona 与工具集改由独立 Agent Preset 统一承载。角色模板新增
+  `agentPreset` 字段并在配置页提供输入框；旧的 `persona` / `toolFilter` 仍保留
+  在设置文档中以免破坏已有数据，但不再发送到子代理接缝，委派时会给出迁移警告。
+  选择 Agent Preset 需要非继承型 provider（如 `spawn`）；`fork` 等继承型
+  provider 会得到明确错误。
+- **依赖与门禁**：全部 `@deepseek-ai/dsh-*` peer 提升为
+  `>=0.2.1-rc.1`，devDependencies 固定到 `0.2.1-rc.1`；新增
+  `engines.dsh: ">=0.2.1-rc.1"`（DSH 0.2.1 起优先按该字段判定兼容性）。
+  `zod` 固定为 `4.4.3`，与 DSH 内部 `dsh-session-projection` 的固定版本一致，
+  避免 4.6.x 与 4.4.x 的 ZodType 身份不兼容。
+  `dsh.compatibility.dshReleases` 收敛为 `0.2.1-rc.1` / `0.2.1-rc.2`。
+- **验证**：`npm run typecheck`、`npm test`（20 文件 / 297 用例）、
+  `npm run build`（host + client bundle）全部通过；新增 real-cordis 探针断言
+  `agentPreset` 透传且 persona/toolFilter 不再进入请求体。
+- **破坏性**：本版本不再兼容 DSH 0.1.x / 0.2.0-rc.1，旧宿主请继续使用
+  `0.5.6`。角色中已有的 persona/toolFilter 需要迁移到 DSH Agent Preset，
+  再在角色里填写 preset id。
+
+## 0.5.6 - 2026-10-10
+
+### 修复
+
+- **one-shot 后台委派的 `owner` 传成 Agent 对象（#10）**：`jobs.start({ owner })` 期望
+  父代理的 **SessionId 字符串**，插件此前传入整个父 Agent 对象；内核 `resolveOwner()`
+  以 `agents.get(session)` 按 SessionId 查找活跃代理，对象键查不到即抛
+  `session "[object Object]" has no live agent (background job owner must be live)`。
+  现改为 `owner: parent.id`（与内核自带 `subagent` 工具一致），并新增回归测试
+  `test/delegation-owner.test.ts`：断言传入的 `owner` 为字符串 id（把该行还原为对象后
+  测试立即失败）。仅影响 `backgroundMode: 'one-shot'` + `run_in_background` 路径；
+  continuable 与前台路径不受影响。
+
+## 0.5.5 - 2026-09-29
+
+### 兼容性
+
+- **适配 DSH 0.2.0-rc.1**：`@deepseek-ai/dsh-*` 的 `peerDependencies` 范围由
+  `^0.1.7-rc.1` 放宽为无上限的 `>=0.1.7-rc.1`（共 19 个 `dsh-*` 包）。DSH 0.2.0-rc.1
+  新增插件兼容性门禁，对所有 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` peer 做
+  `includePrerelease` 的 semver 校验：旧范围 `^0.1.7-rc.1` 不匹配 0.2.0-rc.1，会导致
+  整个 bundle 被跳过（`skipping profile bundle`）；`>=0.1.7-rc.1` 同时满足 0.1.7-rc.2
+  与 0.2.0-rc.1。`@deepseek-ai/cordis` 不参与门禁，范围未变。
+- 本机 **0.2.0-rc.1** 真实装载验证通过（插件正常加载、零错误，无门禁跳过告警）；
+  兼容矩阵 `dsh.compatibility.dshReleases` 新增 `"0.2.0-rc.1": "compatible"`，
+  README 徽章与兼容性声明同步更新。
+
+## 0.5.4 - 2026-09-27
+
+### 变更：配置移到插件详情页并退役 settings.section
+
+- **移除 `settings.section` 注册**：DSH 设置面板不再承载本插件的配置。
+- **新增 `plugins.bundle.config` 注册**（key = npm 包名 `dsh-plugin-subagent-director`）：
+  默认模型行 + 角色卡片渲染在「插件列表 → dsh-plugin-subagent-director」页面的
+  **描述与组件行之间**。该 keyed slot 只在注册了等于包名的 key 时由插件管理页渲染
+  （`configured = ledger.bundles.has(pkg.name)`，见 `dsh-client-ui-plugin-manager`），
+  没有原生兜底表单；bundle 页可能含多个条目，故页面不传宿主 `form`，store 继续自持
+  其 bridge 与草稿生命周期。`view === 'summary'` 返回 null。
+- **类型契约**：按官方 README 的做法，`import type { PluginConfigViewProps }` 从
+  `@deepseek-ai/dsh-client-ui-plugin-manager/client` 合并 `SlotMap` 增强（**仅类型**，
+  运行时不引入该包）；因此新增 devDependency
+  `@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.1`（与本仓库树内 dsh 包同版本，
+  避免 rc.1/rc.2 混装）。
+- README 中「DSH 设置面板内可视化配置」等入口描述同步更新。
+- 不涉及 inject 变更（本插件不读取任何 `ctx.remote.*` 命名空间）。
+
+## 0.5.3 - 2026-09-25
+
+### 兼容：适配 DSH 0.1.7-rc.2
+
+- 在本机 **0.1.7-rc.2** 上真实装载运行通过：全部入口激活、零错误、无 pending；
+  设置读写（`settingsView` / `settingsMutate` 乐观锁）实测往返成功。
+  `dsh.compatibility.dshReleases` 新增 `"0.1.7-rc.2": "compatible"`；README 徽章与
+  兼容性说明同步。
+- 0.1.7-rc.1 → rc.2 的官方 `@deepseek-ai/dsh-*` 公开 API 无移除、无改名（增量新增）。
+  `dsh-subagent` 移除了对 `dsh-session-projection-cache` 的 peer 依赖并调整了后代
+  列举语义（`listDescendants` / `listChildren`）——本插件不使用这些接口，无需适配。
+
+### 加固：悬空 `defaultRole` 改为「读时告警」，恢复等价安全性
+
+0.5.2 迁移到 DSH 0.1.7-rc.1 时，`defaultRole` 指向不存在 role 的跨字段约束无法用
+schemastery 表达，写入时不再被拒绝——配置错误不再被主动暴露。本次把该防护从
+「写时拒绝」改为「读时告警」，覆盖所有消费者，且不破坏 fail-safe：
+
+- **读时检测**（`src/settings.ts`）：新增纯函数 `settingsWarnings(settings)` /
+  `danglingDefaultRoleWarning(settings)`；唯一读取入口 `readDirectorSettings(config,
+  warnings?)` 增加可选告警收集器，悬空时推入告警。**悬空值原样返回，不静默改写**用户
+  配置（写错的值仍是用户写下的那个，便于更正）。不悬空/空值时返回 `[]`，无新噪音。
+- **告警可见（日志）**（`src/index.ts`）：所有消费者共用的 `getSettings` 读取点把
+  告警经 `ctx.logger.warn` 输出；按告警集合签名去重，持续悬空只告警一次，修好后清空、
+  再次写错会重新告警。
+- **告警可见（settingsView）**（`src/remote.ts` / `src/bridge-contract.ts`）：桥的
+  `settingsView` 响应新增可选 `warnings: string[]`（由同一 `settingsWarnings` 计算），
+  非悬空时省略该字段，响应形状保持不变。
+- **保留**：`validateDirectorSettings` 与路由解析器既有的「警告 + 跳过绑定」行为均不变。
+
+### Beta 说明
+
+- 测试版 `0.5.3-beta.0`（`--tag beta`）的内容——设置子系统迁移至 `SettingsForms`
+  （`0.5.2` 条目）与本条加固——随本版一并正式发布。
+
+## 0.5.2 - 2026-09-24
+
+### 兼容：设置子系统迁移至 DSH 0.1.7-rc.1 的 `SettingsForms`
+
+DSH 0.1.7 移除了 `@deepseek-ai/dsh-settings` 的 `SettingsProvider.installSection`
+（默认导出改为 `SettingsForms`），本插件原设置子系统因此在新版抛
+`TypeError: ctx.settings.installSection is not a function` 而无法激活。本次按官方新模型重写：
+
+- **设置声明 → 插件 Config schema**：`src/config.ts` 的 `Config` 现由「组合字段
+  （普通，重启生效）」+ `src/settings.ts` 的 `SettingsFields`（设置字段，全部
+  `.volatile()` 热更）合并而成。只有 volatile 字段进入宿主设置表单（`volatileForm`），
+  故设置页内容不变；条目 id `subagent-director` 即 `describe()`/`mutate()` 的 ns。
+- **设置读取 → `config.<field>.get()`**（`readDirectorSettings`）：快照实时跟随
+  loader 的就地更新，设置面板改动即时生效、无需重启。
+- **页面策略 → `settings.configure({ auto:false }, fiber)`**
+  （`installDirectorSettingsPage`）：插件自带 Web 设置页，`auto:false` 避免宿主重复生成。
+- **字段级写时校验下移到 schema**：旧 `installSection` 的 `validate` 钩子（kebab-case
+  role id、非空 displayName/description、非空 provider）无法在新写路径表达，改为在
+  `RoleTemplateSchema` / `SettingsFields` 中声明（role id 用 dict 的 key schema 校验；
+  displayName/description 用 `required().pattern(/\S/)`），由 configEditor 在写回时校验
+  Config schema 而拒绝非法写入。**保留限制**：`defaultRole` 指向不存在 role 的跨字段
+  约束无法用 schemastery 表达，0.1.7 下不再于写入时拒绝；运行期路由解析器已对该情形
+  警告并跳过绑定（`validateDirectorSettings` 仍保留该检查供显式调用/测试）。
+- **官方 allowlist 读取改写**：0.1.7 无 `settings.get(ns)`，`directorCatalogOk` 与
+  `readModelSelection` 改由 `settings.describe()` 的 `subagent-model-selection-settings`
+  描述符读取（新增 `readNamespaceValue`）。
+- **自发布设置桥与客户端协议不变**：`describe / mutate / writable /
+  SettingsConflictError` 方法面在 `SettingsForms` 中不变，`/subagent-director` 的
+  `settingsView` / `settingsMutate` 端点形状与乐观锁语义无需改动。
+
+### 兼容：连带修复 0.1.7 客户端 API 漂移
+
+依赖升到 0.1.7-rc.1 后 `tsc` 暴露两处客户端类型破坏，随本次一并最小适配：
+
+- `AssistantProvenanceView` → `AssistantProviderMetadataView`，
+  `assistant.provenance` → `assistant.providerMetadata`（形状不变）。
+- `SessionListState` 移除 `current`（`settings.section` 的 owner props 仅 `close`）：
+  移除设置页中已失效的 current-session 选择器；工具目录改由宿主全局注册表枚举
+  （**已知回归**：角色工具集编辑器的「按当前会话枚举 agent 作用域工具」不再生效）。
+
+### 兼容性
+
+- `peerDependencies` 的 `@deepseek-ai/dsh*` 下限提升至 `^0.1.7-rc.1`（`dsh-host-apiproxy`
+  历史例外保持 `^0.1.1-rc.2`）；`@deepseek-ai/cordis` 下限提至 `^4.0.4`（`Volatile` 类型导出）。
+- devDependencies 补齐 0.1.7 `dsh-tools` 的新 peer（`dsh-sandbox` / `dsh-sandbox-policy` /
+  `dsh-ptc-runtime` / `dsh-user-approval` / `dsh-invariants`）以便离线跑测试。
+- `dsh.compatibility.dshReleases` 增列 `0.1.7-rc.1: compatible`。
+
+### 测试
+
+- `test/alpha4-probe.test.ts` 重写至 0.1.7：经真实 cordis 的 Config schema 挂载、
+  断言 `configure({auto:false})`、经 `describe()` 读取官方 allowlist。
+- `test/settings-schema.test.ts` 更新为 volatile 读取与 schema 级写入拒绝；
+  删除 `test/settings-snapshot.test.ts`（`createSettingsSnapshot` 已随旧模型移除）。
+- `npm test` 277/277 通过；`npm run typecheck` 与 `npm run build` 通过。
+
+## 0.5.1 - 2026-09-22
+
+### 变更
+
+- **新增 `dsh.compatibility` 声明**（DSH STORE 上架契约）：`dsh` 字段下新增
+  `compatibility`（保留原 `bundle` / `client`），逐版本声明兼容矩阵——`dshReleases`
+  中 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.2` 均为 `compatible`（三版本均已在本机
+  真实装载运行，插件正常加载、零错误）；未实测的版本不声明（扫描时按 `unknown` 处理）。
+- **`node` 范围判定为 `>=20`**：本仓库 `package.json` 未声明 `engines`、README 亦无 Node
+  要求。判定依据——`tsconfig.json` 的 `target`/`lib` 均为 `ES2023`（完整 ES2023 内建能力
+  对应 Node 20 的 V8），CI 在 Node 22 上执行 typecheck/test/build，且同作者的
+  `dsh-yolo-mode` / `dsh-notify-windows` 均声明 `>=20`。代码中未使用 `Symbol.dispose`
+  等 Node 20 独占 API，故此处为声明性的支持下限，而非编译期硬约束。
+
+### 测试
+
+- `npm run typecheck`、`npm test`、`npm run build` 全部通过（与 CI 步骤一致）。
+
+## 0.5.0 - 2026-09-04
 
 ### 变更
 
@@ -81,7 +280,7 @@
   端点与载荷）不变；`installDirectorSettings` 等导出签名保持；`RpcError.sessionId`
   品牌冲突（宿主 apiproxy 嵌套的 `dsh-session` 副本）在边界处收敛为最小转型。
 
-## [0.4.0] - 2026-08-31
+## 0.4.0 - 2026-08-31
 
 ### 新增
 
@@ -112,7 +311,7 @@
 
 - 用过 `/orchestrate` 的会话在未挂载本插件的 boot（卸载后、其他 profile）中无法加载：上游暂无第三方事件注册 / `ignorable` 写入 API，已在 README FAQ 与 issue #6 记录。
 
-## [0.3.0] - 2026-08-29
+## 0.3.0 - 2026-08-29
 
 ### 新增
 
@@ -160,7 +359,7 @@
 
 [0.3.0]: https://github.com/SeverusZh/dsh-plugin-subagent-director/releases/tag/v0.3.0
 
-## [0.2.0] - 2026-08-17
+## 0.2.0 - 2026-08-17
 
 ### 新增
 
@@ -187,7 +386,7 @@
 - README：默认模型兜底、配置热更新、角色显示名引用、推荐默认角色示例；
 - 新增设计文档与实现计划（`docs/superpowers/`）。
 
-## [0.1.0] - 2026-08-14
+## 0.1.0 - 2026-08-14
 
 首个公开发布版本。
 

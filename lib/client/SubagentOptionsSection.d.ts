@@ -1,5 +1,5 @@
+import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-manager/client';
 import type { SnapshotSelectorHook } from './bind.js';
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { DirectorAllowedRoute } from '../bridge-contract.js';
 import type { SubagentDirectorKey } from './locales.js';
 import type { SubagentOptionsState, SubagentOptionsStore } from './store.js';
@@ -14,12 +14,9 @@ export interface SubagentOptionsSectionInjected {
     t: (key: SubagentDirectorKey) => string;
 }
 /** Props delivered by the slot outlet: the inject face spread flat. */
-export type SubagentOptionsSectionProps = Partial<SubagentOptionsSectionInjected> & {
-    /** Framework global kit: current-session selector (for the tool catalog). */
-    useSessions?: SnapshotSelectorHook<SessionListState>;
-};
+export type SubagentOptionsSectionProps = Partial<SubagentOptionsSectionInjected> & Partial<PluginConfigViewProps>;
 /**
- * Render the Subagent Director settings section content column.
+ * Render the Subagent Director configuration content column.
  * @param props - slot-delivered injected dependencies.
  * @returns the section, or null while the shell has not injected yet.
  */
